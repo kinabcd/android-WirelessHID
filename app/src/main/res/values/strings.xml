@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Wireless HID</string>
+    <string name="activity_main_start">Start</string>
+    <string name="activity_main_stop">Stop</string>
+</resources>
