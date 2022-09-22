@@ -5,8 +5,10 @@ import android.bluetooth.*
 import android.content.Context
 import android.util.Log
 import android.view.KeyEvent
+import androidx.annotation.RequiresPermission
 import androidx.core.content.PermissionChecker.PERMISSION_GRANTED
 import androidx.core.content.PermissionChecker.checkSelfPermission
+import tw.lospot.kin.wirelesshid.bluetooth.report.ConsumerReport
 import tw.lospot.kin.wirelesshid.bluetooth.report.KeyboardReport
 
 class HidCallback(
@@ -21,6 +23,7 @@ class HidCallback(
     private val pairedDevices = HashSet<BluetoothDevice>()
     private val connectedDevices = HashSet<BluetoothDevice>()
     private val keyboardReport = KeyboardReport()
+    private val consumerReport = ConsumerReport()
     private val downKey = HashSet<Byte>()
 
     fun registerApp() {
@@ -56,6 +59,13 @@ class HidCallback(
             Log.w(TAG, "sendKey(), Permission denied")
             return
         }
+        if (sendConsumerKey(keyEvent, down)) return
+        if (sendKeyboardKey(keyEvent, down)) return
+    }
+
+    @RequiresPermission(value = BLUETOOTH_CONNECT)
+    private fun sendKeyboardKey(keyEvent: Int, down: Boolean): Boolean {
+
         when (keyEvent) {
             KeyEvent.KEYCODE_SHIFT_LEFT -> keyboardReport.leftShift = down
             KeyEvent.KEYCODE_SHIFT_RIGHT -> keyboardReport.rightShift = down
@@ -74,6 +84,25 @@ class HidCallback(
         connectedDevices.forEach {
             device.sendReport(it, KeyboardReport.ID, keyboardReport.bytes)
         }
+        return true
+    }
+
+    @RequiresPermission(value = BLUETOOTH_CONNECT)
+    private fun sendConsumerKey(keyEvent: Int, down: Boolean): Boolean {
+        when (keyEvent) {
+            KeyEvent.KEYCODE_MEDIA_NEXT -> consumerReport.scanNextTrack = down
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> consumerReport.scanPrevTrack = down
+            KeyEvent.KEYCODE_MEDIA_STOP -> consumerReport.stop = down
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> consumerReport.playPause = down
+            KeyEvent.KEYCODE_VOLUME_MUTE -> consumerReport.mute = down
+            KeyEvent.KEYCODE_VOLUME_UP -> consumerReport.volumeUp = down
+            KeyEvent.KEYCODE_VOLUME_DOWN -> consumerReport.volumeDown = down
+            else -> return false
+        }
+        connectedDevices.forEach {
+            device.sendReport(it, ConsumerReport.ID, consumerReport.bytes)
+        }
+        return true
     }
 
     override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {

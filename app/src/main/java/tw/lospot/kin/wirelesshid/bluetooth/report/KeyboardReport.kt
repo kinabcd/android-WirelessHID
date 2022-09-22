@@ -71,7 +71,7 @@ class KeyboardReport(
     }
 
     companion object {
-        const val ID = 8
+        const val ID = 2
         const val LEFT_CTRL: Byte = 0b00000001
         const val LEFT_SHIFT: Byte = 0b00000010
         const val LEFT_ALT: Byte = 0b00000100
@@ -85,42 +85,6 @@ class KeyboardReport(
 
         private fun Byte.hasBit(byte: Byte) =
             this.and(byte) != 0.toByte()
-//        const val KEYCODE_A = 4
-//        const val KEYCODE_B = 5
-//        const val KEYCODE_C = 6
-//        const val KEYCODE_D = 7
-//        const val KEYCODE_E = 8
-//        const val KEYCODE_F = 9
-//        const val KEYCODE_G = 10
-//        const val KEYCODE_H = 11
-//        const val KEYCODE_I = 12
-//        const val KEYCODE_J = 13
-//        const val KEYCODE_K = 14
-//        const val KEYCODE_L = 15
-//        const val KEYCODE_M = 16
-//        const val KEYCODE_N = 17
-//        const val KEYCODE_O = 18
-//        const val KEYCODE_P = 19
-//        const val KEYCODE_Q = 20
-//        const val KEYCODE_R = 21
-//        const val KEYCODE_S = 22
-//        const val KEYCODE_T = 23
-//        const val KEYCODE_U = 24
-//        const val KEYCODE_V = 25
-//        const val KEYCODE_W = 26
-//        const val KEYCODE_X = 27
-//        const val KEYCODE_Y = 28
-//        const val KEYCODE_Z = 29
-//        const val KEYCODE_1 = 30
-//        const val KEYCODE_2 = 31
-//        const val KEYCODE_3 = 32
-//        const val KEYCODE_4 = 33
-//        const val KEYCODE_5 = 34
-//        const val KEYCODE_6 = 35
-//        const val KEYCODE_7 = 36
-//        const val KEYCODE_8 = 37
-//        const val KEYCODE_9 = 38
-//        const val KEYCODE_0 = 39
 //
 //        const val KEYCODE_ENTER = 40
 //        const val KEYCODE_ESCAPE = 41
@@ -139,19 +103,6 @@ class KeyboardReport(
 //        const val KEYCODE_PERIOD = 55
 //        const val KEYCODE_FORWARD_SLASH = 56
 //
-//        const val KEYCODE_F1 = 58
-//        const val KEYCODE_F2 = 59
-//        const val KEYCODE_F3 = 60
-//        const val KEYCODE_F4 = 61
-//        const val KEYCODE_F5 = 62
-//        const val KEYCODE_F6 = 63
-//        const val KEYCODE_F7 = 64
-//        const val KEYCODE_F8 = 65
-//        const val KEYCODE_F9 = 66
-//        const val KEYCODE_F10 = 67
-//        const val KEYCODE_F11 = 68
-//        const val KEYCODE_F12 = 69
-//
 //        //const val KEYCODE_PRINT_SCREEN = 70
 //        const val KEYCODE_SCROLL_LOCK = 71
 //        //const val KEYCODE_PAUSE = 72
@@ -162,17 +113,6 @@ class KeyboardReport(
 //        const val KEYCODE_END = 77
 //        const val KEYCODE_PAGE_DOWN = 78
 //        const val KEYCODE_NUM_LOCK = 83
-//
-//
-//
-//        const val KEYCODE_RIGHT_ARROW = 79
-//        const val KEYCODE_LEFT_ARROW = 80
-//        const val KEYCODE_DOWN_ARROW = 81
-//        const val KEYCODE_UP_ARROW = 82
-//
-//        const val KEYCODE_SHIFT_AT = 31
-//        const val KEYCODE_SHIFT_POUND = 32
-//        const val KEYCODE_SHIFT_ASTERIX = 37
 
 
         //        const val KEYCODE_SHIFT_NOT = 30
@@ -224,7 +164,6 @@ class KeyboardReport(
             KeyEvent.KEYCODE_Y to 28,
             KeyEvent.KEYCODE_Z to 29,
 
-
             KeyEvent.KEYCODE_1 to 30,
             KeyEvent.KEYCODE_2 to 31,
             KeyEvent.KEYCODE_3 to 32,
@@ -267,19 +206,27 @@ class KeyboardReport(
             KeyEvent.KEYCODE_F11 to 68,
             KeyEvent.KEYCODE_F12 to 69,
 
+            KeyEvent.KEYCODE_SYSRQ to 70, // SysRq, PrintScreen
             KeyEvent.KEYCODE_SCROLL_LOCK to 71,
+            KeyEvent.KEYCODE_BREAK to 72, // Break, Pause
             KeyEvent.KEYCODE_INSERT to 73,
-            KeyEvent.KEYCODE_HOME to 74,
+            KeyEvent.KEYCODE_MOVE_HOME to 74,
             KeyEvent.KEYCODE_PAGE_UP to 75,
             KeyEvent.KEYCODE_FORWARD_DEL to 76,
             KeyEvent.KEYCODE_MOVE_END to 77,
             KeyEvent.KEYCODE_PAGE_DOWN to 78,
-            KeyEvent.KEYCODE_NUM_LOCK to 83,
 
             KeyEvent.KEYCODE_DPAD_RIGHT to 79,
             KeyEvent.KEYCODE_DPAD_LEFT to 80,
             KeyEvent.KEYCODE_DPAD_DOWN to 81,
             KeyEvent.KEYCODE_DPAD_UP to 82,
+
+            KeyEvent.KEYCODE_NUM_LOCK to 83,
+
+            KeyEvent.KEYCODE_MENU to 118,
+            KeyEvent.KEYCODE_VOLUME_MUTE to 127,
+            KeyEvent.KEYCODE_VOLUME_UP to 128,
+            KeyEvent.KEYCODE_VOLUME_DOWN to 129,
 
             KeyEvent.KEYCODE_AT to 31,
             KeyEvent.KEYCODE_POUND to 32,

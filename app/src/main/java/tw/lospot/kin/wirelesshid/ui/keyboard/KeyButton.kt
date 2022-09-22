@@ -14,8 +14,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 
 @Preview
@@ -23,6 +25,7 @@ import androidx.compose.ui.unit.dp
 fun KeyButton(
     text: String = "●",
     size: Dp = 40.dp,
+    fontSize: TextUnit = TextUnit.Unspecified,
     colSpan: Float = 1f,
     onClick: (Boolean) -> Unit = {}
 ) {
@@ -45,6 +48,30 @@ fun KeyButton(
         .padding(1.dp)
         .background(if (down) Color.Gray else Color.Transparent)
         .border(BorderStroke(1.dp, Color.Gray))) {
-        Text(text = text, modifier = Modifier.align(Alignment.Center))
+        Text(
+            text = text,
+            modifier = Modifier.align(Alignment.Center),
+            fontSize = fontSize,
+            textAlign = TextAlign.Center
+        )
     }
 }
+
+@Composable
+fun KeyButton(
+    text: String = "●",
+    params: KeyButtonParameter,
+    colSpan: Float = 1f,
+    onClick: (Boolean) -> Unit = {}
+) = KeyButton(
+    text = text,
+    size = params.size,
+    fontSize = params.fontSize,
+    colSpan = colSpan,
+    onClick = onClick
+)
+
+data class KeyButtonParameter(
+    val size: Dp = 40.dp,
+    val fontSize: TextUnit = TextUnit.Unspecified,
+)

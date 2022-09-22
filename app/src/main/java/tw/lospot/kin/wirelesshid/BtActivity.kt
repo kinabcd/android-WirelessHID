@@ -22,6 +22,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.core.view.WindowInsetsCompat.Type.navigationBars
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import tw.lospot.kin.wirelesshid.ui.keyboard.QwertKeyboard
 import tw.lospot.kin.wirelesshid.ui.theme.ToolkitTheme
 import java.util.concurrent.Executor
@@ -58,6 +61,10 @@ class BtActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+        WindowInsetsControllerCompat(window, window.peekDecorView()).apply {
+            systemBarsBehavior = BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(navigationBars())
         }
     }
 
