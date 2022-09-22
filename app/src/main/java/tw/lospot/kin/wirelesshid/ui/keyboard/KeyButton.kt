@@ -1,6 +1,7 @@
 package tw.lospot.kin.wirelesshid.ui.keyboard
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -8,7 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,16 +26,24 @@ fun KeyButton(
     colSpan: Float = 1f,
     onClick: (Boolean) -> Unit = {}
 ) {
+    var down by remember { mutableStateOf(false) }
+
     Box(Modifier
         .pointerInput(Unit) {
             detectTapGestures(
-                onPress = { onClick(true) },
-                onTap = { onClick(false) },
+                onPress = {
+                    down = true
+                    onClick(true)
+                    tryAwaitRelease()
+                    down = false
+                    onClick(false)
+                }
             )
         }
         .width(size * colSpan)
         .height(size)
         .padding(1.dp)
+        .background(if (down) Color.Gray else Color.Transparent)
         .border(BorderStroke(1.dp, Color.Gray))) {
         Text(text = text, modifier = Modifier.align(Alignment.Center))
     }
