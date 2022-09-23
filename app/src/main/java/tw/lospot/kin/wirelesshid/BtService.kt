@@ -45,6 +45,8 @@ class BtService : Service(), Handler.Callback {
             ACTION_KEY_UP -> sendKey(msg.arg1, false)
             ACTION_KEY_DOWN -> sendKey(msg.arg1, true)
             ACTION_SELECT_DEVICE -> selectDevice(msg.data.getString("address", null))
+            ACTION_MOVE_MOUSE -> moveMouse(msg.arg1, msg.arg2)
+            ACTION_MOUSE_KEY -> sendMouseKey(msg.arg1, msg.arg2 == 1)
         }
         return true
     }
@@ -99,6 +101,13 @@ class BtService : Service(), Handler.Callback {
         hidCallback?.sendKey(keyEventCode, down)
     }
 
+    private fun sendMouseKey(keyEventCode: Int, down: Boolean) {
+        hidCallback?.sendMouseKey(keyEventCode, down)
+    }
+    private fun moveMouse(dx: Int, dy: Int) {
+        hidCallback?.moveMouse(dx, dy)
+    }
+
     private fun selectDevice(address: String?) {
         selectedAddress = address
         hidCallback?.selectDevice(address)
@@ -145,6 +154,8 @@ class BtService : Service(), Handler.Callback {
         const val ACTION_KEY_UP = 3
         const val ACTION_KEY_DOWN = 4
         const val ACTION_SELECT_DEVICE = 5
+        const val ACTION_MOVE_MOUSE = 6
+        const val ACTION_MOUSE_KEY = 7
     }
 
 }

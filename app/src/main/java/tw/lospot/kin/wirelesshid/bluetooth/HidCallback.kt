@@ -7,11 +7,13 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
+import android.view.MotionEvent
 import androidx.annotation.RequiresPermission
 import androidx.core.content.PermissionChecker.PERMISSION_GRANTED
 import androidx.core.content.PermissionChecker.checkSelfPermission
 import tw.lospot.kin.wirelesshid.bluetooth.report.ConsumerReport
 import tw.lospot.kin.wirelesshid.bluetooth.report.KeyboardReport
+import tw.lospot.kin.wirelesshid.bluetooth.report.ScrollableTrackpadMouseReport
 import kotlin.properties.Delegates
 
 class HidCallback(
@@ -40,6 +42,7 @@ class HidCallback(
     private var currentDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ -> }
     private val keyboardReport = KeyboardReport()
     private val consumerReport = ConsumerReport()
+    private val mouseReport = ScrollableTrackpadMouseReport()
     private val downKey = HashSet<Byte>()
     private val disconnectingTimeoutRunnable = Runnable {
         Log.w(TAG, "Disconnecting timeout")
@@ -64,6 +67,34 @@ class HidCallback(
         }
         if (sendConsumerKey(keyEvent, down)) return
         if (sendKeyboardKey(keyEvent, down)) return
+    }
+
+    fun sendMouseKey(keyEventCode: Int, down: Boolean) {
+        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+            Log.w(TAG, "moveMouse(), Permission denied")
+            return
+        }
+        when (keyEventCode) {
+            MotionEvent.BUTTON_PRIMARY -> mouseReport.leftButton = down
+            MotionEvent.BUTTON_SECONDARY -> mouseReport.rightButton = down
+            MotionEvent.BUTTON_TERTIARY -> mouseReport.middleButton = down
+            else -> return
+        }
+
+        targetDevice?.let {
+            device!!.sendReport(it, ScrollableTrackpadMouseReport.ID, mouseReport.bytes)
+        }
+    }
+
+    fun moveMouse(dx: Int, dy: Int) {
+        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+            Log.w(TAG, "moveMouse(), Permission denied")
+            return
+        }
+        mouseReport.setMove(dx, dy)
+        targetDevice?.let {
+            device!!.sendReport(it, ScrollableTrackpadMouseReport.ID, mouseReport.bytes)
+        }
     }
 
     private fun nextState() {

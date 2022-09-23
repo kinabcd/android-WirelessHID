@@ -1,10 +1,11 @@
 package tw.lospot.kin.wirelesshid.ui.keyboard
 
 import android.view.KeyEvent
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.*
@@ -18,18 +19,15 @@ import androidx.compose.ui.unit.*
     heightDp = 785,
 )
 @Composable
-fun QwertKeyboard(onKey: (keycode: Int, down: Boolean) -> Unit = { _, _ -> }) {
-    var size by remember { mutableStateOf(IntSize.Zero) }
-    val bSize = with(LocalDensity.current) {
-        max(20.dp, min(40.dp, size.width.toDp() / 14.5f))
-    }
-    val params = remember(bSize) { KeyButtonParameter(size = bSize) }
-    val funParams = remember(params) { params.copy(fontSize = bSize.value.sp / 3f) }
+fun QwertKeyboard(
+    modifier: Modifier = Modifier,
+    onKey: (keycode: Int, down: Boolean) -> Unit = { _, _ -> }
+) {
+    val params = remember { KeyButtonParameter() }
+    val funParams = remember(params) { params.copy(fontSize = 9.sp) }
     var fnMode by remember { mutableStateOf(false) }
-    Column(modifier = Modifier
-        .fillMaxWidth()
-        .onSizeChanged { size = it }) {
-        Row {
+    Column(modifier = modifier) {
+        Row(Modifier.weight(1f)) {
             KeyButton("ESC", funParams, colSpan = 1.5f) { onKey(KeyEvent.KEYCODE_ESCAPE, it) }
             if (fnMode) {
                 KeyButton("Mute", funParams) { onKey(KeyEvent.KEYCODE_VOLUME_MUTE, it) }
@@ -60,8 +58,8 @@ fun QwertKeyboard(onKey: (keycode: Int, down: Boolean) -> Unit = { _, _ -> }) {
             }
             KeyButton("Del", funParams) { onKey(KeyEvent.KEYCODE_FORWARD_DEL, it) }
         }
-        Spacer(modifier = Modifier.height(bSize / 3f))
-        Row {
+        Spacer(Modifier.weight(0.3f))
+        Row(Modifier.weight(1f)) {
             KeyButton("`", params) { onKey(KeyEvent.KEYCODE_GRAVE, it) }
             KeyButton("1", params) { onKey(KeyEvent.KEYCODE_1, it) }
             KeyButton("2", params) { onKey(KeyEvent.KEYCODE_2, it) }
@@ -77,7 +75,7 @@ fun QwertKeyboard(onKey: (keycode: Int, down: Boolean) -> Unit = { _, _ -> }) {
             KeyButton("=", params) { onKey(KeyEvent.KEYCODE_EQUALS, it) }
             KeyButton("←", params, colSpan = 1.5f) { onKey(KeyEvent.KEYCODE_DEL, it) }
         }
-        Row {
+        Row(Modifier.weight(1f)) {
             KeyButton("TAB", funParams, colSpan = 1.5f) { onKey(KeyEvent.KEYCODE_TAB, it) }
             KeyButton("Q", params) { onKey(KeyEvent.KEYCODE_Q, it) }
             KeyButton("W", params) { onKey(KeyEvent.KEYCODE_W, it) }
@@ -93,7 +91,7 @@ fun QwertKeyboard(onKey: (keycode: Int, down: Boolean) -> Unit = { _, _ -> }) {
             KeyButton("]", params) { onKey(KeyEvent.KEYCODE_RIGHT_BRACKET, it) }
             KeyButton("\\", params) { onKey(KeyEvent.KEYCODE_BACKSLASH, it) }
         }
-        Row {
+        Row(Modifier.weight(1f)) {
             KeyButton("CAPS", funParams, colSpan = 2f) { onKey(KeyEvent.KEYCODE_CAPS_LOCK, it) }
             KeyButton("A", params) { onKey(KeyEvent.KEYCODE_A, it) }
             KeyButton("S", params) { onKey(KeyEvent.KEYCODE_S, it) }
@@ -108,7 +106,7 @@ fun QwertKeyboard(onKey: (keycode: Int, down: Boolean) -> Unit = { _, _ -> }) {
             KeyButton("'", params) { onKey(KeyEvent.KEYCODE_APOSTROPHE, it) }
             KeyButton("↵", params, colSpan = 1.5f) { onKey(KeyEvent.KEYCODE_ENTER, it) }
         }
-        Row {
+        Row(Modifier.weight(1f)) {
             KeyButton("△", params, colSpan = 1.5f) { onKey(KeyEvent.KEYCODE_SHIFT_LEFT, it) }
             KeyButton("Fn", funParams) { if (it) fnMode = !fnMode }
             KeyButton("Z", params) { onKey(KeyEvent.KEYCODE_Z, it) }
@@ -129,7 +127,7 @@ fun QwertKeyboard(onKey: (keycode: Int, down: Boolean) -> Unit = { _, _ -> }) {
 
             KeyButton("△", params) { onKey(KeyEvent.KEYCODE_SHIFT_RIGHT, it) }
         }
-        Row {
+        Row(Modifier.weight(1f)) {
             KeyButton("Ctrl", funParams) { onKey(KeyEvent.KEYCODE_CTRL_LEFT, it) }
             KeyButton("Win", funParams) { onKey(KeyEvent.KEYCODE_META_LEFT, it) }
             KeyButton("Alt", funParams) { onKey(KeyEvent.KEYCODE_ALT_LEFT, it) }

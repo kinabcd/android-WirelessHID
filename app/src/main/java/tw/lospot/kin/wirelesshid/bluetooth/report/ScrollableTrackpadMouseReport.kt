@@ -1,6 +1,7 @@
 package tw.lospot.kin.wirelesshid.bluetooth.report
 
 import kotlin.experimental.and
+import kotlin.experimental.inv
 import kotlin.experimental.or
 
 class ScrollableTrackpadMouseReport(
@@ -9,21 +10,20 @@ class ScrollableTrackpadMouseReport(
 
 
     var leftButton: Boolean
-        get() = bytes[0] and 0b1 != 0.toByte()
+        get() = bytes[0].hasBit(LEFT_BUTTON)
         set(value) {
-            bytes[0] = if (value)
-                bytes[0] or 0b1
-            else
-                bytes[0] and 0b110
+            bytes[0] = bytes[0].setBit(LEFT_BUTTON, value)
         }
 
     var rightButton: Boolean
-        get() = bytes[0] and 0b10 != 0.toByte()
+        get() = bytes[0].hasBit(RIGHT_BUTTON)
         set(value) {
-            bytes[0] = if (value)
-                bytes[0] or 0b10
-            else
-                bytes[0] and 0b101
+            bytes[0] = bytes[0].setBit(RIGHT_BUTTON, value)
+        }
+    var middleButton: Boolean
+        get() = bytes[0].hasBit(MIDDLE_BUTTON)
+        set(value) {
+            bytes[0] = bytes[0].setBit(MIDDLE_BUTTON, value)
         }
 
     var dxLsb: Byte
@@ -65,8 +65,22 @@ class ScrollableTrackpadMouseReport(
 
 
     fun reset() = bytes.fill(0)
+    fun setMove(dx: Int, dy: Int) {
+        dxMsb = dx.shr(8).toByte()
+        dyMsb = dy.shr(8).toByte()
+        dxLsb = dx.toByte()
+        dyLsb = dy.toByte()
+    }
 
     companion object {
         const val ID = 4
+        const val LEFT_BUTTON: Byte = 0b00000001
+        const val RIGHT_BUTTON: Byte = 0b00000010
+        const val MIDDLE_BUTTON: Byte = 0b00000100
+        private fun Byte.setBit(byte: Byte, value: Boolean) =
+            if (value) this.or(byte) else this.and(byte.inv())
+
+        private fun Byte.hasBit(byte: Byte) =
+            this.and(byte) != 0.toByte()
     }
 }

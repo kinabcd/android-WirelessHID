@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.*
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -22,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
@@ -29,6 +31,7 @@ import androidx.core.view.WindowInsetsCompat.Type.navigationBars
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import tw.lospot.kin.wirelesshid.ui.keyboard.QwertKeyboard
+import tw.lospot.kin.wirelesshid.ui.mouse.TouchPad
 import tw.lospot.kin.wirelesshid.ui.theme.ToolkitTheme
 import java.util.concurrent.Executor
 import kotlin.properties.Delegates
@@ -36,6 +39,7 @@ import kotlin.properties.Delegates
 class BtActivity : ComponentActivity() {
     companion object {
         private const val TAG = "ActivityMain"
+        private const val DEBUG = false
         private val backgroundThread by lazy { HandlerThread("BtActivity").apply { start() } }
         private val backgroundHandler by lazy { Handler(backgroundThread.looper) }
     }
@@ -94,10 +98,7 @@ class BtActivity : ComponentActivity() {
 
     private fun clickStart() {
         backgroundHandler.post {
-
-            connection.sendMessage(
-                action = BtService.ACTION_START, arg = 1
-            )
+            connection.sendMessage(BtService.ACTION_START)
         }
     }
 
@@ -114,6 +115,18 @@ class BtActivity : ComponentActivity() {
             } else {
                 connection.sendMessage(BtService.ACTION_KEY_UP, keycode)
             }
+        }
+    }
+
+    private fun sendMouseKey(keycode: Int, down: Boolean) {
+        backgroundHandler.post {
+            connection.sendMessage(BtService.ACTION_MOUSE_KEY, keycode, if (down) 1 else 0)
+        }
+    }
+
+    private fun moveMouse(dx: Int, dy: Int) {
+        backgroundHandler.post {
+            connection.sendMessage(BtService.ACTION_MOVE_MOUSE, dx, dy)
         }
     }
 
@@ -144,7 +157,8 @@ class BtActivity : ComponentActivity() {
     }
 
     private fun updateConnectionState() {
-        Log.v(TAG, "updateConnectionState: ${connection.isConnected}, ${connection.isRunning}")
+        if (DEBUG)
+            Log.v(TAG, "updateConnectionState: ${connection.isConnected}, ${connection.isRunning}")
         isConnected = connection.isConnected
         isRunning = connection.isRunning
         selected = connection.selected
@@ -178,7 +192,41 @@ class BtActivity : ComponentActivity() {
                     }
                 }
             } else {
-                QwertKeyboard { keycode, down -> sendKey(keycode, down) }
+                val orientation = LocalConfiguration.current.orientation
+                if (orientation != Configuration.ORIENTATION_LANDSCAPE) {
+                    TouchPad(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(0.7f)
+                            .padding(bottom = 8.dp),
+                        onKey = { keycode, down -> sendMouseKey(keycode, down) },
+                        onMove = { dx, dy -> moveMouse(dx, dy) }
+                    )
+                    QwertKeyboard(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(0.3f)
+                    ) { keycode, down -> sendKey(keycode, down) }
+                } else {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f)) {
+                        QwertKeyboard(
+                            Modifier
+                                .fillMaxHeight()
+                                .weight(0.7f)
+                        ) { keycode, down -> sendKey(keycode, down) }
+                        TouchPad(
+                            Modifier
+                                .fillMaxHeight()
+                                .weight(0.3f)
+                                .padding(start = 8.dp),
+                            onKey = { keycode, down -> sendMouseKey(keycode, down) },
+                            onMove = { dx, dy -> moveMouse(dx, dy) }
+                        )
+                    }
+                }
             }
             Row(horizontalArrangement = Arrangement.Center) {
                 Button(
@@ -267,13 +315,14 @@ class BtActivity : ComponentActivity() {
             isBound = false
         }
 
-        fun sendMessage(action: Int, arg: Int = 0, inData: Bundle? = null) {
+        fun sendMessage(action: Int, inArg1: Int = 0, inArg2: Int = 0, inData: Bundle? = null) {
             if (!handler.looper.isCurrentThread) throw RuntimeException("Wrong thread")
-            Log.v(TAG, "sendMessage: $action, $arg")
+            if (DEBUG) Log.v(TAG, "sendMessage: $action, $inArg1, $inArg2")
             try {
                 messenger?.send(Message.obtain().apply {
                     what = action
-                    arg1 = arg
+                    arg1 = inArg1
+                    arg2 = inArg2
                     replyTo = reply
                     if (inData != null) data = inData
                 })
