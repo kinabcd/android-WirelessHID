@@ -1,27 +1,30 @@
 package tw.lospot.kin.wirelesshid
 
+import android.Manifest
+import android.bluetooth.BluetoothManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.os.*
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.Button
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Surface
-import androidx.compose.material.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowInsetsCompat.Type.navigationBars
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -43,6 +46,8 @@ class BtActivity : ComponentActivity() {
 
     private var isRunning by mutableStateOf(false)
     private var isConnected by mutableStateOf(false)
+    private var selected: String? by mutableStateOf(null)
+    private val devices = mutableListOf<Pair<String, String>>()
 
     override fun onCreate(bundle: Bundle?) {
         super.onCreate(bundle)
@@ -52,7 +57,11 @@ class BtActivity : ComponentActivity() {
                     color = MaterialTheme.colors.background,
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .systemBarsPadding()
+                    ) {
                         Panel(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -73,6 +82,7 @@ class BtActivity : ComponentActivity() {
         backgroundHandler.post {
             connection.bind()
         }
+        updateDevices()
     }
 
     override fun onStop() {
@@ -97,49 +107,103 @@ class BtActivity : ComponentActivity() {
         }
     }
 
+    private fun sendKey(keycode: Int, down: Boolean) {
+        backgroundHandler.post {
+            if (down) {
+                connection.sendMessage(BtService.ACTION_KEY_DOWN, keycode)
+            } else {
+                connection.sendMessage(BtService.ACTION_KEY_UP, keycode)
+            }
+        }
+    }
+
+    private fun selectDevice(address: String) {
+        backgroundHandler.post {
+            connection.sendMessage(BtService.ACTION_SELECT_DEVICE, inData = Bundle().apply {
+                putString("address", address)
+            })
+        }
+    }
+
+    private fun updateDevices() {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        val btManager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+        val btAdapter = btManager.adapter
+        val bonded = btAdapter.bondedDevices.map {
+            it.address to it.name
+        }
+        devices.removeAll { it !in bonded }
+        devices.addAll(bonded.filter { it !in devices })
+
+    }
+
     private fun updateConnectionState() {
         Log.v(TAG, "updateConnectionState: ${connection.isConnected}, ${connection.isRunning}")
         isConnected = connection.isConnected
         isRunning = connection.isRunning
+        selected = connection.selected
     }
 
     @Composable
     private fun Panel(
         modifier: Modifier = Modifier
     ) {
+        var showDevices by remember { mutableStateOf(false) }
         Column(
-            modifier = modifier
-                .verticalScroll(rememberScrollState())
-                .systemBarsPadding(),
+            modifier = modifier,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row {
-                if (!isRunning) {
-                    Button(
-                        enabled = isConnected && !isRunning,
-                        onClick = ::clickStart
-                    ) {
-                        Text(stringResource(R.string.activity_main_start))
-                    }
-                } else {
-                    Button(
-                        enabled = isConnected && isRunning,
-                        onClick = ::clickStop
-                    ) {
-                        Text(stringResource(R.string.activity_main_stop))
+            if (showDevices) {
+                LazyColumn {
+                    items(devices, key = { it.first }) {
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 32.dp)
+                                .fillMaxWidth()
+                                .clickable { selectDevice(it.first) }
+                                .height(48.dp)
+                                .padding(4.dp)
+                                .border(BorderStroke(1.dp, Color.Gray))
+                                .padding(8.dp)
+                        ) {
+                            val checkStr = if (it.first == selected) "v " else ""
+                            Text(text = "$checkStr${it.second}(${it.first})")
+                        }
                     }
                 }
+            } else {
+                QwertKeyboard { keycode, down -> sendKey(keycode, down) }
             }
-            QwertKeyboard { keycode, down ->
-                if (down) {
-                    backgroundHandler.post {
-                        connection.sendMessage(BtService.ACTION_KEY_DOWN, keycode)
+            Row(horizontalArrangement = Arrangement.Center) {
+                Button(
+                    modifier = Modifier.size(48.dp),
+                    enabled = isConnected,
+                    onClick = { if (!isRunning) clickStart() else clickStop() },
+                ) {
+                    val painter = if (!isRunning) {
+                        painterResource(id = R.drawable.ic_power)
+                    } else {
+                        painterResource(id = R.drawable.ic_power_off)
                     }
-                } else {
-                    backgroundHandler.post {
-                        connection.sendMessage(BtService.ACTION_KEY_UP, keycode)
-                    }
-
+                    Icon(
+                        painter = painter,
+                        contentDescription = null,
+                    )
+                }
+                Button(
+                    modifier = Modifier.size(48.dp),
+                    onClick = { showDevices = !showDevices },
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_devices),
+                        contentDescription = null,
+                    )
                 }
             }
         }
@@ -174,6 +238,11 @@ class BtActivity : ComponentActivity() {
                 field = value
                 if (isConnected) callback()
             }
+        var selected: String? = null
+            private set(value) {
+                field = value
+                if (isConnected) callback()
+            }
 
         fun bind() {
             if (!handler.looper.isCurrentThread) throw RuntimeException("Wrong thread")
@@ -193,11 +262,12 @@ class BtActivity : ComponentActivity() {
             if (isBound) {
                 context.unbindService(this)
             }
+            sendMessage(BtService.ACTION_STATUS, 0)
             messenger = null
             isBound = false
         }
 
-        fun sendMessage(action: Int, arg: Int = 0) {
+        fun sendMessage(action: Int, arg: Int = 0, inData: Bundle? = null) {
             if (!handler.looper.isCurrentThread) throw RuntimeException("Wrong thread")
             Log.v(TAG, "sendMessage: $action, $arg")
             try {
@@ -205,6 +275,7 @@ class BtActivity : ComponentActivity() {
                     what = action
                     arg1 = arg
                     replyTo = reply
+                    if (inData != null) data = inData
                 })
             } catch (e: RemoteException) {
                 Log.w(TAG, "sendMessage: $e")
@@ -214,10 +285,14 @@ class BtActivity : ComponentActivity() {
         override fun handleMessage(msg: Message): Boolean {
             val what = msg.what
             val arg1 = msg.arg1
+            val data = msg.data
             Log.v(TAG, "handleMessage: $what, $arg1")
             executor.execute {
                 when (what) {
-                    BtService.ACTION_STATUS -> isRunning = arg1 == 1
+                    BtService.ACTION_STATUS -> {
+                        isRunning = arg1 == 1
+                        selected = data.getString("selected")
+                    }
                 }
             }
             return true
@@ -232,7 +307,7 @@ class BtActivity : ComponentActivity() {
             executor.execute {
                 Log.v(TAG, "onServiceConnected")
                 messenger = Messenger(service)
-                sendMessage(BtService.ACTION_STATUS)
+                sendMessage(BtService.ACTION_STATUS, 1)
             }
 
         override fun onBindingDied(name: ComponentName?) = executor.execute {

@@ -3,6 +3,8 @@ package tw.lospot.kin.wirelesshid.bluetooth
 import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.bluetooth.*
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import androidx.annotation.RequiresPermission
@@ -10,47 +12,48 @@ import androidx.core.content.PermissionChecker.PERMISSION_GRANTED
 import androidx.core.content.PermissionChecker.checkSelfPermission
 import tw.lospot.kin.wirelesshid.bluetooth.report.ConsumerReport
 import tw.lospot.kin.wirelesshid.bluetooth.report.KeyboardReport
+import kotlin.properties.Delegates
 
 class HidCallback(
     private val context: Context,
-    private val device: BluetoothHidDevice,
-) : BluetoothHidDevice.Callback() {
+    private val btAdapter: BluetoothAdapter,
+    private val handler: Handler = Handler(Looper.getMainLooper()),
+) : BluetoothHidDevice.Callback(), BluetoothProfile.ServiceListener {
     companion object {
         private const val TAG = "HidCallback"
     }
 
-    private var registered = false
-    private val pairedDevices = HashSet<BluetoothDevice>()
-    private val connectedDevices = HashSet<BluetoothDevice>()
+    enum class State {
+        INIT, PROXYING, STOPPED, STOPPING, REGISTERING, REGISTERED, CONNECTING, DISCONNECTING, CONNECTED
+    }
+
+    private var device: BluetoothHidDevice? = null
+    private var targetState by Delegates.observable(State.INIT) { _, _, new ->
+        Log.v(TAG, "targetState $new")
+        nextState()
+    }
+    private var targetDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ -> nextState() }
+    private var currentState by Delegates.observable(State.INIT) { _, _, new ->
+        Log.v(TAG, "currentState $new")
+        nextState()
+    }
+    private var currentDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ -> }
     private val keyboardReport = KeyboardReport()
     private val consumerReport = ConsumerReport()
     private val downKey = HashSet<Byte>()
-
-    fun registerApp() {
-        if (registered) return
-        Log.v(TAG, "registerApp()")
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
-            Log.w(TAG, "registerApp(), Permission denied")
-            return
-        }
-        registered = device.registerApp(sdpRecord, null, qosOut, context.mainExecutor, this)
-        if (!registered) {
-            Log.w(TAG, "registerApp(), failed")
-        }
+    private val disconnectingTimeoutRunnable = Runnable {
+        Log.w(TAG, "Disconnecting timeout")
+        unregisterApp()
     }
 
-    fun unregisterApp() {
-        if (!registered) return
-        Log.v(TAG, "unregisterApp(), connectedDevices=$connectedDevices")
+    fun selectDevice(address: String?) {
+        Log.v(TAG, "selectDevice($address)")
         if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
-            Log.w(TAG, "unregisterApp(), Permission denied")
+            Log.w(TAG, "selectDevice(), Permission denied")
             return
         }
-        connectedDevices.forEach {
-            device.disconnect(it)
-        }
-        device.unregisterApp()
-        registered = false
+        targetDevice = btAdapter.bondedDevices.firstOrNull { it.address == address }
+        targetState = if (targetDevice != null) State.CONNECTED else State.INIT
     }
 
     fun sendKey(keyEvent: Int, down: Boolean) {
@@ -61,6 +64,108 @@ class HidCallback(
         }
         if (sendConsumerKey(keyEvent, down)) return
         if (sendKeyboardKey(keyEvent, down)) return
+    }
+
+    private fun nextState() {
+        handler.post {
+            if (targetDevice == currentDevice && targetState == currentState) return@post
+            handler.removeCallbacks(disconnectingTimeoutRunnable)
+            when (currentState) {
+                State.INIT -> if (targetState != State.INIT) startProxy()
+                State.PROXYING -> {}
+                State.STOPPED -> if (targetState != State.INIT) registerApp() else closeProxy()
+                State.REGISTERING -> {}
+                State.REGISTERED -> when (targetState) {
+                    State.INIT -> unregisterApp()
+                    State.CONNECTED -> connect()
+                    else -> {}
+                }
+                State.CONNECTING -> {}
+                State.DISCONNECTING -> {
+                    handler.postDelayed(disconnectingTimeoutRunnable, 5000)
+                }
+                State.CONNECTED -> when (targetState) {
+                    State.INIT -> unregisterApp()
+                    State.CONNECTED -> if (targetDevice != currentDevice) disconnect()
+                    else -> {}
+                }
+                State.STOPPING -> {}
+            }
+        }
+    }
+
+    private fun startProxy() {
+        if (currentState != State.INIT) return
+        Log.v(TAG, "startProxy()")
+        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+            Log.w(TAG, "startProxy(), Permission denied")
+            return
+        }
+        if (btAdapter.getProfileProxy(context, this, BluetoothProfile.HID_DEVICE)) {
+            currentState = State.PROXYING
+        }
+    }
+
+    private fun closeProxy() {
+        if (currentState in arrayOf(State.INIT, State.PROXYING)) return
+        Log.v(TAG, "closeProxy()")
+        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+            Log.w(TAG, "closeProxy(), Permission denied")
+            return
+        }
+        btAdapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, device)
+        device = null
+        currentState = State.INIT
+    }
+
+    private fun registerApp() {
+        if (currentState != State.STOPPED) return
+        Log.v(TAG, "registerApp()")
+        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+            Log.w(TAG, "registerApp(), Permission denied")
+            return
+        }
+        if (device!!.registerApp(sdpRecord, null, qosOut, context.mainExecutor, this)) {
+            currentState = State.REGISTERING
+        } else {
+            Log.w(TAG, "registerApp(), Failed")
+            targetState = State.INIT
+        }
+
+    }
+
+    private fun unregisterApp() {
+        if (currentState in arrayOf(State.STOPPED, State.STOPPING)) return
+        Log.v(TAG, "unregisterApp()")
+        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+            Log.w(TAG, "unregisterApp(), Permission denied")
+            return
+        }
+        if (currentState == State.CONNECTED) disconnect()
+        currentDevice = null
+        currentState = State.STOPPING
+        device!!.unregisterApp()
+    }
+
+    private fun connect() {
+        Log.v(TAG, "connect(), target=$targetDevice")
+        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+            Log.w(TAG, "connect(), Permission denied")
+            return
+        }
+        currentDevice = targetDevice
+        currentState = State.CONNECTING
+        device!!.connect(targetDevice)
+    }
+
+    private fun disconnect() {
+        Log.v(TAG, "disconnect(), current=$currentDevice target=$targetDevice")
+        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+            Log.w(TAG, "unregisterApp(), Permission denied")
+            return
+        }
+        currentState = State.DISCONNECTING
+        device!!.disconnect(currentDevice)
     }
 
     @RequiresPermission(value = BLUETOOTH_CONNECT)
@@ -81,8 +186,8 @@ class HidCallback(
             if (down) downKey.add(hidKey) else downKey.remove(hidKey)
         }
         keyboardReport.setKeys(downKey.toByteArray())
-        connectedDevices.forEach {
-            device.sendReport(it, KeyboardReport.ID, keyboardReport.bytes)
+        targetDevice?.let {
+            device!!.sendReport(it, KeyboardReport.ID, keyboardReport.bytes)
         }
         return true
     }
@@ -99,46 +204,31 @@ class HidCallback(
             KeyEvent.KEYCODE_VOLUME_DOWN -> consumerReport.volumeDown = down
             else -> return false
         }
-        connectedDevices.forEach {
-            device.sendReport(it, ConsumerReport.ID, consumerReport.bytes)
+        targetDevice?.let {
+            device!!.sendReport(it, ConsumerReport.ID, consumerReport.bytes)
         }
         return true
     }
 
     override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
-        super.onAppStatusChanged(pluggedDevice, registered)
-        Log.v(TAG, "onAppStatusChanged($pluggedDevice, $registered)")
-        if (pluggedDevice == null || !registered) return
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
-            Log.w(TAG, "onAppStatusChanged(), Permission denied")
-            return
+        Log.v(TAG, "onAppStatusChanged(${pluggedDevice.nameAddress()}, $registered)")
+        when {
+            !registered -> currentState = State.STOPPED
+            currentState == State.REGISTERING -> currentState = State.REGISTERED
         }
-        pairedDevices.addAll(
-            device.getDevicesMatchingConnectionStates(
-                intArrayOf(
-                    BluetoothProfile.STATE_CONNECTED,
-                    BluetoothProfile.STATE_CONNECTING,
-                    BluetoothProfile.STATE_DISCONNECTED,
-                    BluetoothProfile.STATE_DISCONNECTING,
-                )
-            )
-        )
-        pairedDevices.forEach {
-            Log.v(TAG, "pairedDevices: $it")
-        }
-        device.connect(pluggedDevice)
     }
 
     override fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) {
-        super.onConnectionStateChanged(device, state)
-        Log.v(TAG, "onConnectionStateChanged($device, ${state.toBtStateString()})")
-        if (device == null) return
-        if (state == BluetoothProfile.STATE_CONNECTED) {
-            connectedDevices.add(device)
-        } else {
-            connectedDevices.remove(device)
+        Log.v(TAG, "onConnectionStateChanged(${device.nameAddress()}, ${state.toBtStateString()})")
+        when (device) {
+            null -> return
+            currentDevice -> when (state) {
+                BluetoothProfile.STATE_CONNECTED -> currentState = State.CONNECTED
+                BluetoothProfile.STATE_CONNECTING -> currentState = State.CONNECTING
+                BluetoothProfile.STATE_DISCONNECTING -> currentState = State.DISCONNECTING
+                BluetoothProfile.STATE_DISCONNECTED -> currentState = State.REGISTERED
+            }
         }
-        pairedDevices.add(device)
     }
 
     override fun onGetReport(device: BluetoothDevice?, type: Byte, id: Byte, bufferSize: Int) {
@@ -187,5 +277,26 @@ class HidCallback(
         BluetoothProfile.STATE_DISCONNECTED -> "DISCONNECTED"
         BluetoothProfile.STATE_DISCONNECTING -> "DISCONNECTING"
         else -> "$this"
+    }
+
+    private fun BluetoothDevice?.nameAddress() =
+        if (this == null || checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+            null
+        } else {
+            "$name($address)"
+        }
+
+    override fun onServiceConnected(profile: Int, bp: BluetoothProfile) {
+        Log.v(TAG, "onServiceConnected($profile, $bp)")
+        if (bp is BluetoothHidDevice) {
+            device = bp
+            currentState = State.STOPPED
+        }
+    }
+
+    override fun onServiceDisconnected(profile: Int) {
+        Log.v(TAG, "onServiceDisconnected($profile)")
+        device = null
+        currentState = State.INIT
     }
 }
