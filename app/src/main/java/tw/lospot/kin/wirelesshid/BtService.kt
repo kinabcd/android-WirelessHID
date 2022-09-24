@@ -14,6 +14,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import tw.lospot.kin.wirelesshid.bluetooth.HidCallback
+import tw.lospot.kin.wirelesshid.bluetooth.State
 import kotlin.properties.Delegates
 
 class BtService : Service(), Handler.Callback {
@@ -63,8 +64,7 @@ class BtService : Service(), Handler.Callback {
 
     override fun handleMessage(msg: Message): Boolean {
         when (msg.what) {
-            ACTION_START -> hidCallback.isRunning = true
-            ACTION_STOP -> hidCallback.isRunning = false
+            ACTION_POWER -> hidCallback.isRunning = !hidCallback.isRunning
             ACTION_STATUS -> status(msg.replyTo, msg.arg1 == 1)
             ACTION_KEY -> hidCallback.sendKey(msg.arg1, msg.arg2 == 1)
             ACTION_SELECT_DEVICE -> {
@@ -97,19 +97,19 @@ class BtService : Service(), Handler.Callback {
 
     private fun sendStatus(replyTo: Messenger) {
         val outData = Bundle().apply {
+            putBoolean("isRunning", hidCallback.isRunning)
             putString("state", hidCallback.currentState.name)
             putString("current", hidCallback.currentDevice?.address)
             putString("selected", hidCallback.targetDevice?.address)
         }
         replyTo.send(Message.obtain().apply {
             what = ACTION_STATUS
-            arg1 = if (hidCallback.isRunning) 1 else 0
             data = outData
         })
     }
 
     private fun updateServiceState() {
-        isForeground = hidCallback.isRunning
+        isForeground = hidCallback.currentState != State.INITIALIZED
     }
 
     private fun createChannel() {
@@ -146,8 +146,7 @@ class BtService : Service(), Handler.Callback {
 
     companion object {
         private const val TAG = "BtService"
-        const val ACTION_START = 0
-        const val ACTION_STOP = 1
+        const val ACTION_POWER = 1
         const val ACTION_STATUS = 2
         const val ACTION_SELECT_DEVICE = 3
         const val ACTION_KEY = 4

@@ -2,10 +2,10 @@ package tw.lospot.kin.wirelesshid.bluetooth
 
 enum class State {
     /**
-     * INIT is a target state
+     * INITIALIZED is a target state
      * Next state: PROXYING if startProxy
      */
-    INIT,
+    INITIALIZED,
 
     /**
      * getProfileProxy is called and BluetoothHidDevice is not connected.
@@ -16,7 +16,7 @@ enum class State {
     /**
      * BluetoothHidDevice is connected.
      * Next state: REGISTERING if registerApp
-     * Next state: INIT if closeProxy
+     * Next state: INITIALIZED if closeProxy
      */
     STOPPED,
 

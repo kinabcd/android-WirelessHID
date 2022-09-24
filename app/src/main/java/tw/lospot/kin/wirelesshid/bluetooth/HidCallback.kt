@@ -26,11 +26,14 @@ class HidCallback(
         private const val TAG = "HidCallback"
     }
 
-    var isRunning by Delegates.observable(false) { _, _, _ ->
-        updateTargetState()
+    var isRunning by Delegates.observable(false) { _, old, new ->
+        if (old != new) {
+            updateTargetState()
+            onStateChanged()
+        }
     }
     private var device: BluetoothHidDevice? = null
-    private var targetState by Delegates.observable(State.INIT) { _, old, new ->
+    private var targetState by Delegates.observable(State.INITIALIZED) { _, old, new ->
         if (old != new) {
             Log.v(TAG, "targetState $new")
             scheduleNextState()
@@ -43,7 +46,7 @@ class HidCallback(
         onStateChanged()
     }
         private set
-    var currentState by Delegates.observable(State.INIT) { _, old, new ->
+    var currentState by Delegates.observable(State.INITIALIZED) { _, old, new ->
         if (old != new) {
             Log.v(TAG, "currentState $new")
             scheduleNextState()
@@ -81,7 +84,7 @@ class HidCallback(
 
     private fun updateTargetState() {
         targetState = when {
-            !isRunning -> State.INIT
+            !isRunning -> State.INITIALIZED
             targetDevice != null -> State.CONNECTED
             else -> State.REGISTERED
         }
@@ -137,12 +140,12 @@ class HidCallback(
         if (targetDevice == currentDevice && targetState == currentState) return
         handler.removeCallbacks(disconnectingTimeoutRunnable)
         when (currentState) {
-            State.INIT -> if (targetState != State.INIT) startProxy()
+            State.INITIALIZED -> if (targetState != State.INITIALIZED) startProxy()
             State.PROXYING -> {}
-            State.STOPPED -> if (targetState != State.INIT) registerApp() else closeProxy()
+            State.STOPPED -> if (targetState != State.INITIALIZED) registerApp() else closeProxy()
             State.REGISTERING -> {}
             State.REGISTERED -> when (targetState) {
-                State.INIT -> unregisterApp()
+                State.INITIALIZED -> unregisterApp()
                 State.CONNECTED -> connect()
                 else -> {}
             }
@@ -154,14 +157,14 @@ class HidCallback(
                 handler.postDelayed(disconnectingTimeoutRunnable, 5000)
             }
             State.CONNECTED -> when (targetState) {
-                State.INIT -> unregisterApp()
+                State.INITIALIZED -> unregisterApp()
                 State.REGISTERED -> disconnect()
                 State.CONNECTED -> if (targetDevice != currentDevice) disconnect()
                 else -> {}
             }
             State.STOPPING -> {}
             State.CONNECT_FAIL -> when (targetState) {
-                State.INIT -> {
+                State.INITIALIZED -> {
                     handler.removeCallbacks(retryTimeoutRunnable)
                     unregisterApp()
                 }
@@ -179,7 +182,7 @@ class HidCallback(
     }
 
     private fun startProxy() {
-        if (currentState != State.INIT) return
+        if (currentState != State.INITIALIZED) return
         Log.v(TAG, "startProxy()")
         if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
             Log.w(TAG, "startProxy(), Permission denied")
@@ -191,7 +194,7 @@ class HidCallback(
     }
 
     private fun closeProxy() {
-        if (currentState in arrayOf(State.INIT, State.PROXYING)) return
+        if (currentState in arrayOf(State.INITIALIZED, State.PROXYING)) return
         Log.v(TAG, "closeProxy()")
         if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
             Log.w(TAG, "closeProxy(), Permission denied")
@@ -199,7 +202,7 @@ class HidCallback(
         }
         btAdapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, device)
         device = null
-        currentState = State.INIT
+        currentState = State.INITIALIZED
     }
 
     private fun registerApp() {
@@ -386,6 +389,6 @@ class HidCallback(
     override fun onServiceDisconnected(profile: Int) {
         Log.v(TAG, "onServiceDisconnected($profile)")
         device = null
-        currentState = State.INIT
+        currentState = State.INITIALIZED
     }
 }

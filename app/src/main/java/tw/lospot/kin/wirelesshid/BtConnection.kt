@@ -41,7 +41,7 @@ class BtConnection(
         private set
     var currentDevice: String? = null
         private set
-    var state: State = State.INIT
+    var state: State = State.INITIALIZED
         private set
 
     fun bind() {
@@ -91,10 +91,10 @@ class BtConnection(
         executor.execute {
             when (what) {
                 BtService.ACTION_STATUS -> {
-                    isRunning = arg1 == 1
+                    isRunning = data.getBoolean("isRunning")
                     selectedDevice = data.getString("selected")
                     currentDevice = data.getString("current")
-                    state = State.valueOf(data.getString("state") ?: State.INIT.name)
+                    state = State.valueOf(data.getString("state") ?: State.INITIALIZED.name)
                     if (isConnected) callback()
                 }
             }

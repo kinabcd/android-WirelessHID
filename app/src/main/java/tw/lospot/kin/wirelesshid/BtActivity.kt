@@ -20,10 +20,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import tw.lospot.kin.wirelesshid.bluetooth.State
 import tw.lospot.kin.wirelesshid.ui.keyboard.QwertKeyboard
 import tw.lospot.kin.wirelesshid.ui.mouse.TouchPad
@@ -45,7 +48,7 @@ class BtActivity : ComponentActivity() {
     private var isConnected by mutableStateOf(false)
     private var selectedDevice: String? by mutableStateOf(null)
     private var currentDevice: String? by mutableStateOf(null)
-    private var state: State by mutableStateOf(State.INIT)
+    private var state: State by mutableStateOf(State.INITIALIZED)
     private var showDevices by mutableStateOf(false)
     private val devices = mutableListOf<Pair<String, String>>()
 
@@ -53,21 +56,24 @@ class BtActivity : ComponentActivity() {
         super.onCreate(bundle)
         setContent {
             ToolkitTheme {
+                val colors by rememberUpdatedState(MaterialTheme.colors)
+                val windowInsetsController =
+                    remember { WindowInsetsControllerCompat(window, window.peekDecorView()) }
+                SideEffect {
+                    window.statusBarColor = colors.primarySurface.toArgb()
+                    window.navigationBarColor = colors.background.toArgb()
+                    windowInsetsController.apply {
+                        isAppearanceLightStatusBars = colors.isLight
+                        isAppearanceLightNavigationBars = colors.isLight
+                    }
+                }
                 Surface(
                     color = MaterialTheme.colors.background,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .systemBarsPadding()
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .systemBarsPadding()
-                    ) {
-                        Panel(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.BottomCenter)
-                        )
-                    }
+                    Panel(modifier = Modifier.fillMaxSize())
                 }
             }
         }
@@ -88,43 +94,28 @@ class BtActivity : ComponentActivity() {
         }
     }
 
-    private fun clickStart() {
-        backgroundHandler.post {
-            connection.sendMessage(BtService.ACTION_START)
-        }
+    private fun sendKey(keycode: Int, down: Boolean) = backgroundHandler.post {
+        connection.sendMessage(BtService.ACTION_KEY, keycode, if (down) 1 else 0)
     }
 
-    private fun clickStop() {
-        backgroundHandler.post {
-            connection.sendMessage(BtService.ACTION_STOP)
-        }
+    private fun sendMouseKey(keycode: Int, down: Boolean) = backgroundHandler.post {
+        connection.sendMessage(BtService.ACTION_MOUSE_KEY, keycode, if (down) 1 else 0)
     }
 
-    private fun sendKey(keycode: Int, down: Boolean) {
-        backgroundHandler.post {
-            connection.sendMessage(BtService.ACTION_KEY, keycode, if (down) 1 else 0)
-        }
+    private fun moveMouse(dx: Int, dy: Int) = backgroundHandler.post {
+        connection.sendMessage(BtService.ACTION_MOUSE_MOVE, dx, dy)
     }
 
-    private fun sendMouseKey(keycode: Int, down: Boolean) {
-        backgroundHandler.post {
-            connection.sendMessage(BtService.ACTION_MOUSE_KEY, keycode, if (down) 1 else 0)
-        }
+    private fun clickPower() = backgroundHandler.post {
+        connection.sendMessage(BtService.ACTION_POWER)
     }
 
-    private fun moveMouse(dx: Int, dy: Int) {
-        backgroundHandler.post {
-            connection.sendMessage(BtService.ACTION_MOUSE_MOVE, dx, dy)
-        }
+    private fun clickDevice(address: String?) = backgroundHandler.post {
+        connection.sendMessage(BtService.ACTION_SELECT_DEVICE, inData = Bundle().apply {
+            putString("address", address)
+        })
     }
 
-    private fun clickDevice(address: String?) {
-        backgroundHandler.post {
-            connection.sendMessage(BtService.ACTION_SELECT_DEVICE, inData = Bundle().apply {
-                putString("address", address)
-            })
-        }
-    }
 
     private fun updateDevices() {
         if (ActivityCompat.checkSelfPermission(
@@ -146,13 +137,19 @@ class BtActivity : ComponentActivity() {
     private fun updateConnectionState() {
         if (DEBUG)
             Log.v(TAG, "updateConnectionState: ${connection.isConnected}, ${connection.isRunning}")
+        val stateChanged = state != connection.state
         isConnected = connection.isConnected
         isRunning = connection.isRunning
         selectedDevice = connection.selectedDevice
         currentDevice = connection.currentDevice
         state = connection.state
-        if (selectedDevice == null) {
-            showDevices = true
+
+        if (stateChanged) {
+            when (state) {
+                State.REGISTERED -> if (selectedDevice == null) showDevices = true
+                State.CONNECTED -> showDevices = false
+                else -> {}
+            }
         }
     }
 
@@ -160,10 +157,7 @@ class BtActivity : ComponentActivity() {
     private fun Panel(
         modifier: Modifier = Modifier
     ) {
-        Column(
-            modifier = modifier,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(modifier = modifier) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -190,7 +184,7 @@ class BtActivity : ComponentActivity() {
                                 Modifier
                                     .fillMaxWidth()
                                     .weight(0.7f)
-                                    .padding(bottom = 8.dp),
+                                    .padding(8.dp),
                                 onKey = { keycode, down -> sendMouseKey(keycode, down) },
                                 onMove = { dx, dy -> moveMouse(dx, dy) }
                             )
@@ -211,7 +205,7 @@ class BtActivity : ComponentActivity() {
                                 Modifier
                                     .fillMaxHeight()
                                     .weight(0.3f)
-                                    .padding(start = 8.dp),
+                                    .padding(horizontal = 8.dp),
                                 onKey = { keycode, down -> sendMouseKey(keycode, down) },
                                 onMove = { dx, dy -> moveMouse(dx, dy) }
                             )
@@ -219,49 +213,24 @@ class BtActivity : ComponentActivity() {
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(36.dp)) {
-                val colors = ButtonDefaults.buttonColors(
-                    backgroundColor = MaterialTheme.colors.surface,
-                    contentColor = MaterialTheme.colors.onSurface,
-                    disabledBackgroundColor = MaterialTheme.colors.surface,
-                    disabledContentColor = MaterialTheme.colors.onSurface.copy(alpha = ContentAlpha.disabled)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(52.dp)) {
                 Spacer(modifier = Modifier.width(32.dp))
                 Text(text = state.name, modifier = Modifier.weight(1f))
                 Spacer(modifier = Modifier.width(16.dp))
-                OutlinedButton(
-                    modifier = Modifier.size(36.dp),
-                    contentPadding = PaddingValues(4.dp),
-                    colors = colors,
+                BottomButton(
+                    painter = painterResource(id = R.drawable.ic_power),
                     enabled = isConnected,
-                    onClick = { if (!isRunning) clickStart() else clickStop() },
-                ) {
-                    val painter = if (!isRunning) {
-                        painterResource(id = R.drawable.ic_power)
-                    } else {
-                        painterResource(id = R.drawable.ic_power_off)
-                    }
-                    Icon(
-                        painter = painter,
-                        contentDescription = null,
-                    )
-                }
+                    selected = isRunning,
+                    onClick = { clickPower() },
+                )
                 Spacer(modifier = Modifier.width(8.dp))
-                OutlinedButton(
-                    modifier = Modifier.size(36.dp),
-                    contentPadding = PaddingValues(4.dp),
-                    colors = colors,
+                BottomButton(
+                    painter = painterResource(id = R.drawable.ic_devices),
+                    selected = showDevices,
                     onClick = { showDevices = !showDevices },
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_devices),
-                        contentDescription = null,
-                    )
-                }
+                )
                 Spacer(modifier = Modifier.width(32.dp))
             }
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 
@@ -291,6 +260,39 @@ class BtActivity : ComponentActivity() {
                 }
                 .clickable { clickDevice(address) }
                 .padding(8.dp)
+            )
+        }
+    }
+
+    @Composable
+    private fun BottomButton(
+        onClick: () -> Unit,
+        painter: Painter,
+        contentDescription: String? = null,
+        enabled: Boolean = true,
+        selected: Boolean = false,
+    ) {
+        val backgroundColor =
+            if (selected) MaterialTheme.colors.onSurface else MaterialTheme.colors.surface
+        val contentColor =
+            if (selected) MaterialTheme.colors.surface else MaterialTheme.colors.onSurface
+        val colors = ButtonDefaults.buttonColors(
+            backgroundColor = backgroundColor,
+            contentColor = contentColor,
+            disabledBackgroundColor = backgroundColor,
+            disabledContentColor = contentColor.copy(alpha = ContentAlpha.disabled)
+        )
+
+        OutlinedButton(
+            modifier = Modifier.size(36.dp),
+            contentPadding = PaddingValues(4.dp),
+            enabled = enabled,
+            colors = colors,
+            onClick = onClick,
+        ) {
+            Icon(
+                painter = painter,
+                contentDescription = contentDescription,
             )
         }
     }
