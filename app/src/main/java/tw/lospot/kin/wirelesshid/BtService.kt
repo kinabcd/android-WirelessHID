@@ -11,6 +11,8 @@ import android.os.*
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.edit
+import androidx.preference.PreferenceManager
 import tw.lospot.kin.wirelesshid.bluetooth.HidCallback
 import kotlin.properties.Delegates
 
@@ -22,13 +24,35 @@ class BtService : Service(), Handler.Callback {
     private val notificationManager by lazy { NotificationManagerCompat.from(this) }
     private val btManager by lazy { getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager }
     private val btAdapter by lazy { btManager.adapter }
-    private var selectedAddress: String? = null
-    private var hidCallback: HidCallback? by Delegates.observable(null) { _, old, new ->
-        if (old == new) return@observable
-        old?.selectDevice(null)
-        new?.selectDevice(selectedAddress)
+    private val preferences by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
+    private val hidCallback by lazy {
+        HidCallback(context, btAdapter) {
+            updateServiceState()
+            notifyStatus()
+        }
     }
-    private var running = false
+
+    private var isForeground by Delegates.observable(false) { _, old, new ->
+        if (old != new) {
+            if (new) {
+                startForegroundService(Intent().apply {
+                    setClass(applicationContext, BtService::class.java)
+                })
+                setNotification(
+                    getString(R.string.app_name), "Running"
+                )
+            } else {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        hidCallback.selectDevice(preferences.getString("selectedAddress", null))
+    }
+
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         return START_NOT_STICKY
     }
@@ -39,36 +63,21 @@ class BtService : Service(), Handler.Callback {
 
     override fun handleMessage(msg: Message): Boolean {
         when (msg.what) {
-            ACTION_START -> start()
-            ACTION_STOP -> stop()
+            ACTION_START -> hidCallback.isRunning = true
+            ACTION_STOP -> hidCallback.isRunning = false
             ACTION_STATUS -> status(msg.replyTo, msg.arg1 == 1)
-            ACTION_KEY_UP -> sendKey(msg.arg1, false)
-            ACTION_KEY_DOWN -> sendKey(msg.arg1, true)
-            ACTION_SELECT_DEVICE -> selectDevice(msg.data.getString("address", null))
-            ACTION_MOVE_MOUSE -> moveMouse(msg.arg1, msg.arg2)
-            ACTION_MOUSE_KEY -> sendMouseKey(msg.arg1, msg.arg2 == 1)
+            ACTION_KEY -> hidCallback.sendKey(msg.arg1, msg.arg2 == 1)
+            ACTION_SELECT_DEVICE -> {
+                val address = msg.data.getString("address", null)
+                preferences.edit {
+                    putString("selectedAddress", address)
+                }
+                hidCallback.selectDevice(address)
+            }
+            ACTION_MOUSE_MOVE -> hidCallback.sendMouseMove(msg.arg1, msg.arg2)
+            ACTION_MOUSE_KEY -> hidCallback.sendMouseKey(msg.arg1, msg.arg2 == 1)
         }
         return true
-    }
-
-    private fun start() {
-        startForegroundService(Intent().apply {
-            setClass(applicationContext, BtService::class.java)
-        })
-        running = true
-        hidCallback = HidCallback(context, btAdapter)
-        setNotification(
-            getString(R.string.app_name), "Running"
-        )
-        notifyStatus()
-    }
-
-    private fun stop() {
-        running = false
-        hidCallback = null
-        notifyStatus()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
     private fun status(replyTo: Messenger, on: Boolean) {
@@ -88,30 +97,19 @@ class BtService : Service(), Handler.Callback {
 
     private fun sendStatus(replyTo: Messenger) {
         val outData = Bundle().apply {
-            putString("selected", selectedAddress)
+            putString("state", hidCallback.currentState.name)
+            putString("current", hidCallback.currentDevice?.address)
+            putString("selected", hidCallback.targetDevice?.address)
         }
         replyTo.send(Message.obtain().apply {
             what = ACTION_STATUS
-            arg1 = if (running) 1 else 0
+            arg1 = if (hidCallback.isRunning) 1 else 0
             data = outData
         })
     }
 
-    private fun sendKey(keyEventCode: Int, down: Boolean) {
-        hidCallback?.sendKey(keyEventCode, down)
-    }
-
-    private fun sendMouseKey(keyEventCode: Int, down: Boolean) {
-        hidCallback?.sendMouseKey(keyEventCode, down)
-    }
-    private fun moveMouse(dx: Int, dy: Int) {
-        hidCallback?.moveMouse(dx, dy)
-    }
-
-    private fun selectDevice(address: String?) {
-        selectedAddress = address
-        hidCallback?.selectDevice(address)
-        notifyStatus()
+    private fun updateServiceState() {
+        isForeground = hidCallback.isRunning
     }
 
     private fun createChannel() {
@@ -151,11 +149,10 @@ class BtService : Service(), Handler.Callback {
         const val ACTION_START = 0
         const val ACTION_STOP = 1
         const val ACTION_STATUS = 2
-        const val ACTION_KEY_UP = 3
-        const val ACTION_KEY_DOWN = 4
-        const val ACTION_SELECT_DEVICE = 5
-        const val ACTION_MOVE_MOUSE = 6
-        const val ACTION_MOUSE_KEY = 7
+        const val ACTION_SELECT_DEVICE = 3
+        const val ACTION_KEY = 4
+        const val ACTION_MOUSE_MOVE = 5
+        const val ACTION_MOUSE_KEY = 6
     }
 
 }

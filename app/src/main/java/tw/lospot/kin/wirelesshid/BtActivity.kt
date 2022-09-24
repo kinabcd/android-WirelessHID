@@ -2,10 +2,6 @@ package tw.lospot.kin.wirelesshid
 
 import android.Manifest
 import android.bluetooth.BluetoothManager
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.*
@@ -13,6 +9,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -27,19 +24,15 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
-import androidx.core.view.WindowInsetsCompat.Type.navigationBars
-import androidx.core.view.WindowInsetsControllerCompat
-import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+import tw.lospot.kin.wirelesshid.bluetooth.State
 import tw.lospot.kin.wirelesshid.ui.keyboard.QwertKeyboard
 import tw.lospot.kin.wirelesshid.ui.mouse.TouchPad
 import tw.lospot.kin.wirelesshid.ui.theme.ToolkitTheme
-import java.util.concurrent.Executor
-import kotlin.properties.Delegates
 
 class BtActivity : ComponentActivity() {
     companion object {
-        private const val TAG = "ActivityMain"
-        private const val DEBUG = false
+        private const val TAG = "BtActivity"
+        private val DEBUG = Log.isLoggable(TAG, Log.VERBOSE)
         private val backgroundThread by lazy { HandlerThread("BtActivity").apply { start() } }
         private val backgroundHandler by lazy { Handler(backgroundThread.looper) }
     }
@@ -50,7 +43,10 @@ class BtActivity : ComponentActivity() {
 
     private var isRunning by mutableStateOf(false)
     private var isConnected by mutableStateOf(false)
-    private var selected: String? by mutableStateOf(null)
+    private var selectedDevice: String? by mutableStateOf(null)
+    private var currentDevice: String? by mutableStateOf(null)
+    private var state: State by mutableStateOf(State.INIT)
+    private var showDevices by mutableStateOf(false)
     private val devices = mutableListOf<Pair<String, String>>()
 
     override fun onCreate(bundle: Bundle?) {
@@ -74,10 +70,6 @@ class BtActivity : ComponentActivity() {
                     }
                 }
             }
-        }
-        WindowInsetsControllerCompat(window, window.peekDecorView()).apply {
-            systemBarsBehavior = BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            hide(navigationBars())
         }
     }
 
@@ -110,11 +102,7 @@ class BtActivity : ComponentActivity() {
 
     private fun sendKey(keycode: Int, down: Boolean) {
         backgroundHandler.post {
-            if (down) {
-                connection.sendMessage(BtService.ACTION_KEY_DOWN, keycode)
-            } else {
-                connection.sendMessage(BtService.ACTION_KEY_UP, keycode)
-            }
+            connection.sendMessage(BtService.ACTION_KEY, keycode, if (down) 1 else 0)
         }
     }
 
@@ -126,11 +114,11 @@ class BtActivity : ComponentActivity() {
 
     private fun moveMouse(dx: Int, dy: Int) {
         backgroundHandler.post {
-            connection.sendMessage(BtService.ACTION_MOVE_MOUSE, dx, dy)
+            connection.sendMessage(BtService.ACTION_MOUSE_MOVE, dx, dy)
         }
     }
 
-    private fun selectDevice(address: String) {
+    private fun clickDevice(address: String?) {
         backgroundHandler.post {
             connection.sendMessage(BtService.ACTION_SELECT_DEVICE, inData = Bundle().apply {
                 putString("address", address)
@@ -153,7 +141,6 @@ class BtActivity : ComponentActivity() {
         }
         devices.removeAll { it !in bonded }
         devices.addAll(bonded.filter { it !in devices })
-
     }
 
     private fun updateConnectionState() {
@@ -161,76 +148,92 @@ class BtActivity : ComponentActivity() {
             Log.v(TAG, "updateConnectionState: ${connection.isConnected}, ${connection.isRunning}")
         isConnected = connection.isConnected
         isRunning = connection.isRunning
-        selected = connection.selected
+        selectedDevice = connection.selectedDevice
+        currentDevice = connection.currentDevice
+        state = connection.state
+        if (selectedDevice == null) {
+            showDevices = true
+        }
     }
 
     @Composable
     private fun Panel(
         modifier: Modifier = Modifier
     ) {
-        var showDevices by remember { mutableStateOf(false) }
         Column(
             modifier = modifier,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (showDevices) {
-                LazyColumn {
-                    items(devices, key = { it.first }) {
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 32.dp)
-                                .fillMaxWidth()
-                                .clickable { selectDevice(it.first) }
-                                .height(48.dp)
-                                .padding(4.dp)
-                                .border(BorderStroke(1.dp, Color.Gray))
-                                .padding(8.dp)
-                        ) {
-                            val checkStr = if (it.first == selected) "v " else ""
-                            Text(text = "$checkStr${it.second}(${it.first})")
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                if (showDevices) {
+                    LazyColumn(modifier = Modifier.fillMaxSize(), reverseLayout = true) {
+                        items(devices, key = { it.first }) {
+                            DeviceItem(
+                                it.first, it.second,
+                                it.first == selectedDevice,
+                                it.first == currentDevice,
+                            )
+                        }
+                        item {
+                            DeviceItem(address = null, name = "None", selectedDevice == null)
+                        }
+                    }
+                } else {
+                    val orientation = LocalConfiguration.current.orientation
+                    if (orientation != Configuration.ORIENTATION_LANDSCAPE) {
+                        Column(Modifier.fillMaxSize()) {
+                            TouchPad(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .weight(0.7f)
+                                    .padding(bottom = 8.dp),
+                                onKey = { keycode, down -> sendMouseKey(keycode, down) },
+                                onMove = { dx, dy -> moveMouse(dx, dy) }
+                            )
+                            QwertKeyboard(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .weight(0.3f)
+                            ) { keycode, down -> sendKey(keycode, down) }
+                        }
+                    } else {
+                        Row(Modifier.fillMaxSize()) {
+                            QwertKeyboard(
+                                Modifier
+                                    .fillMaxHeight()
+                                    .weight(0.7f)
+                            ) { keycode, down -> sendKey(keycode, down) }
+                            TouchPad(
+                                Modifier
+                                    .fillMaxHeight()
+                                    .weight(0.3f)
+                                    .padding(start = 8.dp),
+                                onKey = { keycode, down -> sendMouseKey(keycode, down) },
+                                onMove = { dx, dy -> moveMouse(dx, dy) }
+                            )
                         }
                     }
                 }
-            } else {
-                val orientation = LocalConfiguration.current.orientation
-                if (orientation != Configuration.ORIENTATION_LANDSCAPE) {
-                    TouchPad(
-                        Modifier
-                            .fillMaxWidth()
-                            .weight(0.7f)
-                            .padding(bottom = 8.dp),
-                        onKey = { keycode, down -> sendMouseKey(keycode, down) },
-                        onMove = { dx, dy -> moveMouse(dx, dy) }
-                    )
-                    QwertKeyboard(
-                        Modifier
-                            .fillMaxWidth()
-                            .weight(0.3f)
-                    ) { keycode, down -> sendKey(keycode, down) }
-                } else {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .weight(1f)) {
-                        QwertKeyboard(
-                            Modifier
-                                .fillMaxHeight()
-                                .weight(0.7f)
-                        ) { keycode, down -> sendKey(keycode, down) }
-                        TouchPad(
-                            Modifier
-                                .fillMaxHeight()
-                                .weight(0.3f)
-                                .padding(start = 8.dp),
-                            onKey = { keycode, down -> sendMouseKey(keycode, down) },
-                            onMove = { dx, dy -> moveMouse(dx, dy) }
-                        )
-                    }
-                }
             }
-            Row(horizontalArrangement = Arrangement.Center) {
-                Button(
-                    modifier = Modifier.size(48.dp),
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(36.dp)) {
+                val colors = ButtonDefaults.buttonColors(
+                    backgroundColor = MaterialTheme.colors.surface,
+                    contentColor = MaterialTheme.colors.onSurface,
+                    disabledBackgroundColor = MaterialTheme.colors.surface,
+                    disabledContentColor = MaterialTheme.colors.onSurface.copy(alpha = ContentAlpha.disabled)
+                )
+                Spacer(modifier = Modifier.width(32.dp))
+                Text(text = state.name, modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.width(16.dp))
+                OutlinedButton(
+                    modifier = Modifier.size(36.dp),
+                    contentPadding = PaddingValues(4.dp),
+                    colors = colors,
                     enabled = isConnected,
                     onClick = { if (!isRunning) clickStart() else clickStop() },
                 ) {
@@ -244,8 +247,11 @@ class BtActivity : ComponentActivity() {
                         contentDescription = null,
                     )
                 }
-                Button(
-                    modifier = Modifier.size(48.dp),
+                Spacer(modifier = Modifier.width(8.dp))
+                OutlinedButton(
+                    modifier = Modifier.size(36.dp),
+                    contentPadding = PaddingValues(4.dp),
+                    colors = colors,
                     onClick = { showDevices = !showDevices },
                 ) {
                     Icon(
@@ -253,120 +259,39 @@ class BtActivity : ComponentActivity() {
                         contentDescription = null,
                     )
                 }
+                Spacer(modifier = Modifier.width(32.dp))
             }
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 
-    private class BtConnection(
-        private val context: Context,
-        private val handler: Handler,
-        private val callback: () -> Unit
-    ) : ServiceConnection, Handler.Callback {
-        companion object {
-            private const val TAG = "BtConnection"
-        }
-
-        private val intent = Intent().apply { setClass(context, BtService::class.java) }
-        private val executor = Executor { handler.post(it) }
-        private var messenger by Delegates.observable<Messenger?>(null) { _, old, new ->
-            if (old != new) callback()
-        }
-        private val reply = Messenger(Handler(handler.looper, this))
-        var isBound = false
-            private set(value) {
-                if (field != value) {
-                    field = value
-                    callback()
-                }
-            }
-        val isConnected get() = messenger != null
-
-        var isRunning = false
-            private set(value) {
-                field = value
-                if (isConnected) callback()
-            }
-        var selected: String? = null
-            private set(value) {
-                field = value
-                if (isConnected) callback()
-            }
-
-        fun bind() {
-            if (!handler.looper.isCurrentThread) throw RuntimeException("Wrong thread")
-            if (!isBound) {
-                isBound = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    context.bindService(intent, Context.BIND_AUTO_CREATE, executor, this)
-                } else {
-                    context.bindService(intent, this, Context.BIND_AUTO_CREATE)
-                }
-            } else {
-                Log.w(TAG, "bind when bound")
-            }
-        }
-
-        fun unbind() {
-            if (!handler.looper.isCurrentThread) throw RuntimeException("Wrong thread")
-            if (isBound) {
-                context.unbindService(this)
-            }
-            sendMessage(BtService.ACTION_STATUS, 0)
-            messenger = null
-            isBound = false
-        }
-
-        fun sendMessage(action: Int, inArg1: Int = 0, inArg2: Int = 0, inData: Bundle? = null) {
-            if (!handler.looper.isCurrentThread) throw RuntimeException("Wrong thread")
-            if (DEBUG) Log.v(TAG, "sendMessage: $action, $inArg1, $inArg2")
-            try {
-                messenger?.send(Message.obtain().apply {
-                    what = action
-                    arg1 = inArg1
-                    arg2 = inArg2
-                    replyTo = reply
-                    if (inData != null) data = inData
-                })
-            } catch (e: RemoteException) {
-                Log.w(TAG, "sendMessage: $e")
-            }
-        }
-
-        override fun handleMessage(msg: Message): Boolean {
-            val what = msg.what
-            val arg1 = msg.arg1
-            val data = msg.data
-            Log.v(TAG, "handleMessage: $what, $arg1")
-            executor.execute {
-                when (what) {
-                    BtService.ACTION_STATUS -> {
-                        isRunning = arg1 == 1
-                        selected = data.getString("selected")
+    @Composable
+    private fun DeviceItem(
+        address: String?,
+        name: String?,
+        checked: Boolean = false,
+        checked2: Boolean = false,
+    ) {
+        Surface(
+            modifier = Modifier
+                .padding(horizontal = 32.dp)
+                .fillMaxWidth()
+                .height(48.dp)
+                .padding(4.dp)
+                .border(BorderStroke(1.dp, Color.Gray))
+        ) {
+            val addressStr = if (address.isNullOrBlank()) "" else "(${address})"
+            Text(text = "${name}$addressStr", modifier = Modifier
+                .let {
+                    when {
+                        checked -> it.background(Color(0x2200FF00))
+                        checked2 -> it.background(Color(0x22FF0000))
+                        else -> it
                     }
                 }
-            }
-            return true
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) = executor.execute {
-            Log.v(TAG, "onServiceDisconnected")
-            messenger = null
-        }
-
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) =
-            executor.execute {
-                Log.v(TAG, "onServiceConnected")
-                messenger = Messenger(service)
-                sendMessage(BtService.ACTION_STATUS, 1)
-            }
-
-        override fun onBindingDied(name: ComponentName?) = executor.execute {
-            Log.w(TAG, "onBindingDied")
-            unbind()
-        }
-
-        override fun onNullBinding(name: ComponentName?) = executor.execute {
-            Log.w(TAG, "onNullBinding")
-            unbind()
+                .clickable { clickDevice(address) }
+                .padding(8.dp)
+            )
         }
     }
 }

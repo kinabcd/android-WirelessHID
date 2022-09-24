@@ -20,33 +20,54 @@ class HidCallback(
     private val context: Context,
     private val btAdapter: BluetoothAdapter,
     private val handler: Handler = Handler(Looper.getMainLooper()),
+    private val onStateChanged: () -> Unit,
 ) : BluetoothHidDevice.Callback(), BluetoothProfile.ServiceListener {
     companion object {
         private const val TAG = "HidCallback"
     }
 
-    enum class State {
-        INIT, PROXYING, STOPPED, STOPPING, REGISTERING, REGISTERED, CONNECTING, DISCONNECTING, CONNECTED
+    var isRunning by Delegates.observable(false) { _, _, _ ->
+        updateTargetState()
     }
-
     private var device: BluetoothHidDevice? = null
-    private var targetState by Delegates.observable(State.INIT) { _, _, new ->
-        Log.v(TAG, "targetState $new")
-        nextState()
+    private var targetState by Delegates.observable(State.INIT) { _, old, new ->
+        if (old != new) {
+            Log.v(TAG, "targetState $new")
+            scheduleNextState()
+            onStateChanged()
+        }
     }
-    private var targetDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ -> nextState() }
-    private var currentState by Delegates.observable(State.INIT) { _, _, new ->
-        Log.v(TAG, "currentState $new")
-        nextState()
+    var targetDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ ->
+        updateTargetState()
+        scheduleNextState()
+        onStateChanged()
     }
-    private var currentDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ -> }
+        private set
+    var currentState by Delegates.observable(State.INIT) { _, old, new ->
+        if (old != new) {
+            Log.v(TAG, "currentState $new")
+            scheduleNextState()
+            onStateChanged()
+        }
+    }
+        private set
+    var currentDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ ->
+        onStateChanged()
+    }
+        private set
     private val keyboardReport = KeyboardReport()
     private val consumerReport = ConsumerReport()
     private val mouseReport = ScrollableTrackpadMouseReport()
     private val downKey = HashSet<Byte>()
     private val disconnectingTimeoutRunnable = Runnable {
-        Log.w(TAG, "Disconnecting timeout")
-        unregisterApp()
+        currentState = State.DISCONNECT_TIMEOUT
+    }
+
+    private val retryTimeoutRunnable = Runnable {
+        currentState = State.REGISTERED
+    }
+    private val nextStateRunnable = Runnable {
+        nextState()
     }
 
     fun selectDevice(address: String?) {
@@ -56,10 +77,18 @@ class HidCallback(
             return
         }
         targetDevice = btAdapter.bondedDevices.firstOrNull { it.address == address }
-        targetState = if (targetDevice != null) State.CONNECTED else State.INIT
+    }
+
+    private fun updateTargetState() {
+        targetState = when {
+            !isRunning -> State.INIT
+            targetDevice != null -> State.CONNECTED
+            else -> State.REGISTERED
+        }
     }
 
     fun sendKey(keyEvent: Int, down: Boolean) {
+        if (currentState != State.CONNECTED) return
         Log.v(TAG, "sendKey($keyEvent, $down)")
         if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
             Log.w(TAG, "sendKey(), Permission denied")
@@ -70,6 +99,7 @@ class HidCallback(
     }
 
     fun sendMouseKey(keyEventCode: Int, down: Boolean) {
+        if (currentState != State.CONNECTED) return
         if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
             Log.w(TAG, "moveMouse(), Permission denied")
             return
@@ -86,41 +116,64 @@ class HidCallback(
         }
     }
 
-    fun moveMouse(dx: Int, dy: Int) {
+    fun sendMouseMove(dx: Int, dy: Int) {
+        if (currentState != State.CONNECTED) return
         if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
             Log.w(TAG, "moveMouse(), Permission denied")
             return
         }
         mouseReport.setMove(dx, dy)
-        targetDevice?.let {
-            device!!.sendReport(it, ScrollableTrackpadMouseReport.ID, mouseReport.bytes)
+        currentDevice?.let {
+            device!!.sendReport(currentDevice, ScrollableTrackpadMouseReport.ID, mouseReport.bytes)
         }
     }
 
+    private fun scheduleNextState() {
+        handler.post(nextStateRunnable)
+    }
+
     private fun nextState() {
-        handler.post {
-            if (targetDevice == currentDevice && targetState == currentState) return@post
-            handler.removeCallbacks(disconnectingTimeoutRunnable)
-            when (currentState) {
-                State.INIT -> if (targetState != State.INIT) startProxy()
-                State.PROXYING -> {}
-                State.STOPPED -> if (targetState != State.INIT) registerApp() else closeProxy()
-                State.REGISTERING -> {}
-                State.REGISTERED -> when (targetState) {
-                    State.INIT -> unregisterApp()
-                    State.CONNECTED -> connect()
-                    else -> {}
+        handler.removeCallbacks(nextStateRunnable)
+        if (targetDevice == currentDevice && targetState == currentState) return
+        handler.removeCallbacks(disconnectingTimeoutRunnable)
+        when (currentState) {
+            State.INIT -> if (targetState != State.INIT) startProxy()
+            State.PROXYING -> {}
+            State.STOPPED -> if (targetState != State.INIT) registerApp() else closeProxy()
+            State.REGISTERING -> {}
+            State.REGISTERED -> when (targetState) {
+                State.INIT -> unregisterApp()
+                State.CONNECTED -> connect()
+                else -> {}
+            }
+            State.REGISTER_FAIL -> {
+                handler.postDelayed({ currentState = State.STOPPED }, 5000)
+            }
+            State.CONNECTING -> {}
+            State.DISCONNECTING -> {
+                handler.postDelayed(disconnectingTimeoutRunnable, 5000)
+            }
+            State.CONNECTED -> when (targetState) {
+                State.INIT -> unregisterApp()
+                State.REGISTERED -> disconnect()
+                State.CONNECTED -> if (targetDevice != currentDevice) disconnect()
+                else -> {}
+            }
+            State.STOPPING -> {}
+            State.CONNECT_FAIL -> when (targetState) {
+                State.INIT -> {
+                    handler.removeCallbacks(retryTimeoutRunnable)
+                    unregisterApp()
                 }
-                State.CONNECTING -> {}
-                State.DISCONNECTING -> {
-                    handler.postDelayed(disconnectingTimeoutRunnable, 5000)
+                State.CONNECTED -> {
+                    Log.w(TAG, "Retry after 5s")
+                    handler.postDelayed(retryTimeoutRunnable, 5000)
                 }
-                State.CONNECTED -> when (targetState) {
-                    State.INIT -> unregisterApp()
-                    State.CONNECTED -> if (targetDevice != currentDevice) disconnect()
-                    else -> {}
-                }
-                State.STOPPING -> {}
+                else -> {}
+            }
+            State.DISCONNECT_TIMEOUT -> {
+                Log.w(TAG, "Disconnecting timeout")
+                unregisterApp()
             }
         }
     }
@@ -160,7 +213,8 @@ class HidCallback(
             currentState = State.REGISTERING
         } else {
             Log.w(TAG, "registerApp(), Failed")
-            targetState = State.INIT
+            currentState = State.REGISTER_FAIL
+            isRunning = false
         }
 
     }
@@ -257,7 +311,11 @@ class HidCallback(
                 BluetoothProfile.STATE_CONNECTED -> currentState = State.CONNECTED
                 BluetoothProfile.STATE_CONNECTING -> currentState = State.CONNECTING
                 BluetoothProfile.STATE_DISCONNECTING -> currentState = State.DISCONNECTING
-                BluetoothProfile.STATE_DISCONNECTED -> currentState = State.REGISTERED
+                BluetoothProfile.STATE_DISCONNECTED -> currentState = when (currentState) {
+                    State.CONNECT_FAIL -> State.CONNECT_FAIL
+                    State.CONNECTING -> State.CONNECT_FAIL
+                    else -> State.REGISTERED
+                }
             }
         }
     }
