@@ -1,17 +1,18 @@
 package tw.lospot.kin.wirelesshid
 
-import android.Manifest
+import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.bluetooth.BluetoothManager
-import android.content.pm.PackageManager
+import android.content.pm.PackageManager.PERMISSION_GRANTED
 import android.content.res.Configuration
-import android.os.*
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -40,6 +42,11 @@ class BtActivity : ComponentActivity() {
         private val backgroundHandler by lazy { Handler(backgroundThread.looper) }
     }
 
+    private val requestPermissionLauncher =
+        registerForActivityResult(RequestMultiplePermissions()) {
+            showPermissionHint = !checkPermission()
+        }
+
     private val connection by lazy {
         BtConnection(this, backgroundHandler, ::updateConnectionState)
     }
@@ -50,6 +57,7 @@ class BtActivity : ComponentActivity() {
     private var currentDevice: String? by mutableStateOf(null)
     private var state: State by mutableStateOf(State.INITIALIZED)
     private var showDevices by mutableStateOf(false)
+    private var showPermissionHint by mutableStateOf(false)
     private val devices = mutableListOf<Pair<String, String>>()
 
     override fun onCreate(bundle: Bundle?) {
@@ -81,10 +89,17 @@ class BtActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        val hasPermission = checkPermission()
+        showPermissionHint = !hasPermission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !hasPermission && !shouldShowRequestPermissionRationale(BLUETOOTH_CONNECT)
+        ) {
+            maybeRequestPermission()
+        }
+
         backgroundHandler.post {
             connection.bind()
         }
-        updateDevices()
     }
 
     override fun onStop() {
@@ -116,13 +131,13 @@ class BtActivity : ComponentActivity() {
         })
     }
 
+    private fun maybeRequestPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !checkPermission())
+            requestPermissionLauncher.launch(arrayOf(BLUETOOTH_CONNECT))
+    }
 
     private fun updateDevices() {
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.BLUETOOTH_CONNECT
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (!checkPermission()) {
             return
         }
         val btManager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
@@ -153,6 +168,10 @@ class BtActivity : ComponentActivity() {
         }
     }
 
+    private fun checkPermission(): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        ActivityCompat.checkSelfPermission(this, BLUETOOTH_CONNECT) == PERMISSION_GRANTED
+    } else true
+
     @Composable
     private fun Panel(
         modifier: Modifier = Modifier
@@ -163,7 +182,12 @@ class BtActivity : ComponentActivity() {
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                if (showDevices) {
+                if (showPermissionHint) {
+                    PermissionHint()
+                } else if (showDevices) {
+                    LaunchedEffect(true) {
+                        updateDevices()
+                    }
                     LazyColumn(modifier = Modifier.fillMaxSize(), reverseLayout = true) {
                         items(devices, key = { it.first }) {
                             DeviceItem(
@@ -227,7 +251,7 @@ class BtActivity : ComponentActivity() {
                 BottomButton(
                     painter = painterResource(id = R.drawable.ic_devices),
                     selected = showDevices,
-                    onClick = { showDevices = !showDevices },
+                    onClick = { showDevices = !showDevices && checkPermission() },
                 )
                 Spacer(modifier = Modifier.width(32.dp))
             }
@@ -294,6 +318,27 @@ class BtActivity : ComponentActivity() {
                 painter = painter,
                 contentDescription = contentDescription,
             )
+        }
+    }
+
+    @Composable
+    fun PermissionHint() {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+        ) {
+            Text(text = "Permission denied", fontWeight = FontWeight.Bold, color = Color.Red)
+            Spacer(Modifier.height(8.dp))
+            Text(text = "Nearby devices", fontWeight = FontWeight.Bold)
+            Text(text = "Connect to other devices.", Modifier.padding(start = 16.dp))
+            Spacer(Modifier.height(16.dp))
+            Button(
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                onClick = { maybeRequestPermission() }) {
+                Text(text = "Grant permissions")
+            }
         }
     }
 }

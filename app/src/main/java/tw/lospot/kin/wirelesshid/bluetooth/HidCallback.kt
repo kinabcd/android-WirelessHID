@@ -3,12 +3,12 @@ package tw.lospot.kin.wirelesshid.bluetooth
 import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.bluetooth.*
 import android.content.Context
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
-import androidx.annotation.RequiresPermission
 import androidx.core.content.PermissionChecker.PERMISSION_GRANTED
 import androidx.core.content.PermissionChecker.checkSelfPermission
 import tw.lospot.kin.wirelesshid.bluetooth.report.ConsumerReport
@@ -26,12 +26,15 @@ class HidCallback(
         private const val TAG = "HidCallback"
     }
 
-    var isRunning by Delegates.observable(false) { _, old, new ->
-        if (old != new) {
-            updateTargetState()
-            onStateChanged()
+    var isRunning = false
+        set(value) {
+            val new = value && checkSelfPermission()
+            if (field != new) {
+                field = new
+                updateTargetState()
+                onStateChanged()
+            }
         }
-    }
     private var device: BluetoothHidDevice? = null
     private var targetState by Delegates.observable(State.INITIALIZED) { _, old, new ->
         if (old != new) {
@@ -75,7 +78,7 @@ class HidCallback(
 
     fun selectDevice(address: String?) {
         Log.v(TAG, "selectDevice($address)")
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+        if (!checkSelfPermission()) {
             Log.w(TAG, "selectDevice(), Permission denied")
             return
         }
@@ -92,8 +95,7 @@ class HidCallback(
 
     fun sendKey(keyEvent: Int, down: Boolean) {
         if (currentState != State.CONNECTED) return
-        Log.v(TAG, "sendKey($keyEvent, $down)")
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+        if (!checkSelfPermission()) {
             Log.w(TAG, "sendKey(), Permission denied")
             return
         }
@@ -103,7 +105,7 @@ class HidCallback(
 
     fun sendMouseKey(keyEventCode: Int, down: Boolean) {
         if (currentState != State.CONNECTED) return
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+        if (!checkSelfPermission()) {
             Log.w(TAG, "moveMouse(), Permission denied")
             return
         }
@@ -121,7 +123,7 @@ class HidCallback(
 
     fun sendMouseMove(dx: Int, dy: Int) {
         if (currentState != State.CONNECTED) return
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+        if (!checkSelfPermission()) {
             Log.w(TAG, "moveMouse(), Permission denied")
             return
         }
@@ -137,6 +139,10 @@ class HidCallback(
 
     private fun nextState() {
         handler.removeCallbacks(nextStateRunnable)
+        if (!checkSelfPermission()) {
+            Log.w(TAG, "nextState(), Permission denied")
+            return
+        }
         if (targetDevice == currentDevice && targetState == currentState) return
         handler.removeCallbacks(disconnectingTimeoutRunnable)
         when (currentState) {
@@ -184,7 +190,7 @@ class HidCallback(
     private fun startProxy() {
         if (currentState != State.INITIALIZED) return
         Log.v(TAG, "startProxy()")
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+        if (!checkSelfPermission()) {
             Log.w(TAG, "startProxy(), Permission denied")
             return
         }
@@ -196,7 +202,7 @@ class HidCallback(
     private fun closeProxy() {
         if (currentState in arrayOf(State.INITIALIZED, State.PROXYING)) return
         Log.v(TAG, "closeProxy()")
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+        if (!checkSelfPermission()) {
             Log.w(TAG, "closeProxy(), Permission denied")
             return
         }
@@ -208,7 +214,7 @@ class HidCallback(
     private fun registerApp() {
         if (currentState != State.STOPPED) return
         Log.v(TAG, "registerApp()")
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+        if (!checkSelfPermission()) {
             Log.w(TAG, "registerApp(), Permission denied")
             return
         }
@@ -225,7 +231,7 @@ class HidCallback(
     private fun unregisterApp() {
         if (currentState in arrayOf(State.STOPPED, State.STOPPING)) return
         Log.v(TAG, "unregisterApp()")
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+        if (!checkSelfPermission()) {
             Log.w(TAG, "unregisterApp(), Permission denied")
             return
         }
@@ -237,7 +243,7 @@ class HidCallback(
 
     private fun connect() {
         Log.v(TAG, "connect(), target=$targetDevice")
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
+        if (!checkSelfPermission()) {
             Log.w(TAG, "connect(), Permission denied")
             return
         }
@@ -248,16 +254,19 @@ class HidCallback(
 
     private fun disconnect() {
         Log.v(TAG, "disconnect(), current=$currentDevice target=$targetDevice")
-        if (checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
-            Log.w(TAG, "unregisterApp(), Permission denied")
+        if (!checkSelfPermission()) {
+            Log.w(TAG, "disconnect(), Permission denied")
             return
         }
         currentState = State.DISCONNECTING
         device!!.disconnect(currentDevice)
     }
 
-    @RequiresPermission(value = BLUETOOTH_CONNECT)
     private fun sendKeyboardKey(keyEvent: Int, down: Boolean): Boolean {
+        if (!checkSelfPermission()) {
+            Log.w(TAG, "sendKeyboardKey(), Permission denied")
+            return false
+        }
 
         when (keyEvent) {
             KeyEvent.KEYCODE_SHIFT_LEFT -> keyboardReport.leftShift = down
@@ -280,8 +289,12 @@ class HidCallback(
         return true
     }
 
-    @RequiresPermission(value = BLUETOOTH_CONNECT)
     private fun sendConsumerKey(keyEvent: Int, down: Boolean): Boolean {
+        if (!checkSelfPermission()) {
+            Log.w(TAG, "sendConsumerKey(), Permission denied")
+            return false
+        }
+
         when (keyEvent) {
             KeyEvent.KEYCODE_MEDIA_NEXT -> consumerReport.scanNextTrack = down
             KeyEvent.KEYCODE_MEDIA_PREVIOUS -> consumerReport.scanPrevTrack = down
@@ -371,12 +384,11 @@ class HidCallback(
         else -> "$this"
     }
 
-    private fun BluetoothDevice?.nameAddress() =
-        if (this == null || checkSelfPermission(context, BLUETOOTH_CONNECT) != PERMISSION_GRANTED) {
-            null
-        } else {
-            "$name($address)"
-        }
+    private fun BluetoothDevice?.nameAddress() = when {
+        this == null -> null
+        !checkSelfPermission() -> address
+        else -> "$name($address)"
+    }
 
     override fun onServiceConnected(profile: Int, bp: BluetoothProfile) {
         Log.v(TAG, "onServiceConnected($profile, $bp)")
@@ -391,4 +403,7 @@ class HidCallback(
         device = null
         currentState = State.INITIALIZED
     }
+
+    private fun checkSelfPermission() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        checkSelfPermission(context, BLUETOOTH_CONNECT) == PERMISSION_GRANTED else true
 }
