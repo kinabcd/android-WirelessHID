@@ -58,7 +58,7 @@ class BtActivity : ComponentActivity() {
     private var state: State by mutableStateOf(State.INITIALIZED)
     private var showDevices by mutableStateOf(false)
     private var showPermissionHint by mutableStateOf(false)
-    private val devices = mutableListOf<Pair<String, String>>()
+    private val devices = mutableStateListOf<Pair<String, String>>()
 
     override fun onCreate(bundle: Bundle?) {
         super.onCreate(bundle)
