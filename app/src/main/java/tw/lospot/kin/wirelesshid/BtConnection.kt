@@ -67,8 +67,24 @@ class BtConnection(
         isBound = false
     }
 
-    fun sendMessage(action: Int, inArg1: Int = 0, inArg2: Int = 0, inData: Bundle? = null) {
-        if (!handler.looper.isCurrentThread) throw RuntimeException("Wrong thread")
+    fun sendKey(keycode: Int, down: Boolean) =
+        sendMessage(BtService.ACTION_KEY, keycode, if (down) 1 else 0)
+
+    fun sendMouseKey(keycode: Int, down: Boolean) =
+        sendMessage(BtService.ACTION_MOUSE_KEY, keycode, if (down) 1 else 0)
+
+    fun moveMouse(dx: Int, dy: Int) = sendMessage(BtService.ACTION_MOUSE_MOVE, dx, dy)
+    fun switchPower() = sendMessage(BtService.ACTION_POWER)
+    fun selectDevice(address: String?) =
+        sendMessage(BtService.ACTION_SELECT_DEVICE, inData = Bundle().apply {
+            putString("address", address)
+        })
+
+    private fun sendMessage(action: Int, inArg1: Int = 0, inArg2: Int = 0, inData: Bundle? = null) {
+        if (!handler.looper.isCurrentThread) {
+            handler.post { sendMessage(action, inArg1, inArg2, inData) }
+            return
+        }
         if (DEBUG) Log.v(TAG, "sendMessage: $action, $inArg1, $inArg2")
         try {
             messenger?.send(Message.obtain().apply {
