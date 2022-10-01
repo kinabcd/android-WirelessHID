@@ -1,70 +1,19 @@
 package tw.lospot.kin.wirelesshid.bluetooth.report
 
-import kotlin.experimental.and
-import kotlin.experimental.inv
-import kotlin.experimental.or
+import tw.lospot.kin.wirelesshid.util.BitBoolean
+import tw.lospot.kin.wirelesshid.util.ByteInArray
 
-class ScrollableTrackpadMouseReport(
-    val bytes: ByteArray = ByteArray(7) { 0 }
-) {
+class ScrollableTrackpadMouseReport(val bytes: ByteArray = ByteArray(7)) {
+    var leftButton by BitBoolean(bytes, 0, 0)
+    var rightButton by BitBoolean(bytes, 0, 1)
+    var middleButton by BitBoolean(bytes, 0, 2)
+    var dxLsb by ByteInArray(bytes, 1)
+    var dxMsb by ByteInArray(bytes, 2)
+    var dyLsb by ByteInArray(bytes, 3)
+    var dyMsb by ByteInArray(bytes, 4)
+    var vScroll by ByteInArray(bytes, 5)
+    var hScroll by ByteInArray(bytes, 6)
 
-
-    var leftButton: Boolean
-        get() = bytes[0].hasBit(LEFT_BUTTON)
-        set(value) {
-            bytes[0] = bytes[0].setBit(LEFT_BUTTON, value)
-        }
-
-    var rightButton: Boolean
-        get() = bytes[0].hasBit(RIGHT_BUTTON)
-        set(value) {
-            bytes[0] = bytes[0].setBit(RIGHT_BUTTON, value)
-        }
-    var middleButton: Boolean
-        get() = bytes[0].hasBit(MIDDLE_BUTTON)
-        set(value) {
-            bytes[0] = bytes[0].setBit(MIDDLE_BUTTON, value)
-        }
-
-    var dxLsb: Byte
-        get() = bytes[1]
-        set(value) {
-            bytes[1] = value
-        }
-
-    var dxMsb: Byte
-        get() = bytes[2]
-        set(value) {
-            bytes[2] = value
-        }
-
-
-    var dyLsb: Byte
-        get() = bytes[3]
-        set(value) {
-            bytes[3] = value
-        }
-
-    var dyMsb: Byte
-        get() = bytes[4]
-        set(value) {
-            bytes[4] = value
-        }
-
-    var vScroll: Byte
-        get() = bytes[5]
-        set(value) {
-            bytes[5] = value
-        }
-
-    var hScroll: Byte
-        get() = bytes[6]
-        set(value) {
-            bytes[6] = value
-        }
-
-
-    fun reset() = bytes.fill(0)
     fun setMove(dx: Int, dy: Int) {
         dxMsb = dx.shr(8).toByte()
         dyMsb = dy.shr(8).toByte()
@@ -74,13 +23,5 @@ class ScrollableTrackpadMouseReport(
 
     companion object {
         const val ID = 4
-        const val LEFT_BUTTON: Byte = 0b00000001
-        const val RIGHT_BUTTON: Byte = 0b00000010
-        const val MIDDLE_BUTTON: Byte = 0b00000100
-        private fun Byte.setBit(byte: Byte, value: Boolean) =
-            if (value) this.or(byte) else this.and(byte.inv())
-
-        private fun Byte.hasBit(byte: Byte) =
-            this.and(byte) != 0.toByte()
     }
 }

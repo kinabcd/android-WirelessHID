@@ -1,58 +1,17 @@
 package tw.lospot.kin.wirelesshid.bluetooth.report
 
 import android.view.KeyEvent
-import kotlin.experimental.and
-import kotlin.experimental.inv
-import kotlin.experimental.or
+import tw.lospot.kin.wirelesshid.util.BitBoolean
 
-class KeyboardReport(
-    val bytes: ByteArray = ByteArray(8) { 0 }
-) {
-    var leftControl: Boolean
-        get() = bytes[0].hasBit(LEFT_CTRL)
-        set(value) {
-            bytes[0] = bytes[0].setBit(LEFT_CTRL, value)
-        }
-
-    var leftShift: Boolean
-        get() = bytes[0].hasBit(LEFT_SHIFT)
-        set(value) {
-            bytes[0] = bytes[0].setBit(LEFT_SHIFT, value)
-        }
-
-    var leftAlt: Boolean
-        get() = bytes[0].hasBit(LEFT_ALT)
-        set(value) {
-            bytes[0] = bytes[0].setBit(LEFT_ALT, value)
-        }
-    var leftMeta: Boolean
-        get() = bytes[0].hasBit(LEFT_META)
-        set(value) {
-            bytes[0] = bytes[0].setBit(LEFT_META, value)
-        }
-
-    var rightControl: Boolean
-        get() = bytes[0].hasBit(RIGHT_CTRL)
-        set(value) {
-            bytes[0] = bytes[0].setBit(RIGHT_CTRL, value)
-        }
-
-    var rightShift: Boolean
-        get() = bytes[0].hasBit(RIGHT_SHIFT)
-        set(value) {
-            bytes[0] = bytes[0].setBit(RIGHT_SHIFT, value)
-        }
-
-    var rightAlt: Boolean
-        get() = bytes[0].hasBit(RIGHT_ALT)
-        set(value) {
-            bytes[0] = bytes[0].setBit(RIGHT_ALT, value)
-        }
-    var rightMeta: Boolean
-        get() = bytes[0].hasBit(RIGHT_META)
-        set(value) {
-            bytes[0] = bytes[0].setBit(RIGHT_META, value)
-        }
+class KeyboardReport(val bytes: ByteArray = ByteArray(8)) {
+    var leftControl by BitBoolean(bytes, 0, 0)
+    var leftShift by BitBoolean(bytes, 0, 1)
+    var leftAlt by BitBoolean(bytes, 0, 2)
+    var leftMeta by BitBoolean(bytes, 0, 3)
+    var rightControl by BitBoolean(bytes, 0, 4)
+    var rightShift by BitBoolean(bytes, 0, 5)
+    var rightAlt by BitBoolean(bytes, 0, 6)
+    var rightMeta by BitBoolean(bytes, 0, 7)
 
     fun setKeys(keys: ByteArray) {
         val oldKeys = bytes.filterIndexed { index, _ -> index in 2..7 }
@@ -72,57 +31,13 @@ class KeyboardReport(
 
     companion object {
         const val ID = 2
-        const val LEFT_CTRL: Byte = 0b00000001
-        const val LEFT_SHIFT: Byte = 0b00000010
-        const val LEFT_ALT: Byte = 0b00000100
-        const val LEFT_META: Byte = 0b00001000
-        const val RIGHT_CTRL: Byte = 0b00010000
-        const val RIGHT_SHIFT: Byte = 0b00100000
-        const val RIGHT_ALT: Byte = 0b01000000
-        const val RIGHT_META: Byte = 0b10000000.toByte()
-        private fun Byte.setBit(byte: Byte, value: Boolean) =
-            if (value) this.or(byte) else this.and(byte.inv())
 
-        private fun Byte.hasBit(byte: Byte) =
-            this.and(byte) != 0.toByte()
-//
-//        const val KEYCODE_ENTER = 40
-//        const val KEYCODE_ESCAPE = 41
-//        const val KEYCODE_BACKSPACE = 42
-//        const val KEYCODE_TAB = 43
-//        const val KEYCODE_SPACEBAR = 44
-//        const val KEYCODE_DASH = 45
-//        const val KEYCODE_EQUALS = 46
-//        const val KEYCODE_OPEN_BRACKET = 47
-//        const val KEYCODE_CLOSED_BRACKET = 48
-//        const val KEYCODE_BACKSLASH = 49
-//        const val KEYCODE_SEMICOLON = 51
-//        const val KEYCODE_APOSTROPHE = 52
-//        const val KEYCODE_GRAVE_ACCENT = 53
-//        const val KEYCODE_COMMA = 54
-//        const val KEYCODE_PERIOD = 55
-//        const val KEYCODE_FORWARD_SLASH = 56
-//
-//        //const val KEYCODE_PRINT_SCREEN = 70
-//        const val KEYCODE_SCROLL_LOCK = 71
-//        //const val KEYCODE_PAUSE = 72
-//        const val KEYCODE_INSERT = 73
-//        const val KEYCODE_HOME = 74
-//        const val KEYCODE_PAGE_UP = 75
-//        const val KEYCODE_FORWARD_DELETE = 76
-//        const val KEYCODE_END = 77
-//        const val KEYCODE_PAGE_DOWN = 78
-//        const val KEYCODE_NUM_LOCK = 83
-
-
-        //        const val KEYCODE_SHIFT_NOT = 30
-
-        //        const val KEYCODE_SHIFT_DOLLAR = 33
+//        const val KEYCODE_SHIFT_NOT = 30
+//        const val KEYCODE_SHIFT_DOLLAR = 33
 //        const val KEYCODE_SHIFT_PERCENT = 34
 //        const val KEYCODE_SHIFT_CARET = 35
 //        const val KEYCODE_SHIFT_AMPERSAND = 36
-
-        //        const val KEYCODE_SHIFT_OPEN_PARENTHESIS = 38
+//        const val KEYCODE_SHIFT_OPEN_PARENTHESIS = 38
 //        const val KEYCODE_SHIFT_CLOSED_PARENTHESIS = 39
 //        const val KEYCODE_SHIFT_UNDERSCORE = 45
 //        const val KEYCODE_SHIFT_PLUS = 46

@@ -1,5 +1,8 @@
 package tw.lospot.kin.wirelesshid.bluetooth
 
+import tw.lospot.kin.wirelesshid.bluetooth.report.ConsumerReport
+import tw.lospot.kin.wirelesshid.bluetooth.report.KeyboardReport
+
 object DescriptorCollection {
     //BluetoothHidDevice.SUBCLASS1_COMBO
      val MOUSE_ABSOLUTE = byteArrayOf(
@@ -57,7 +60,7 @@ object DescriptorCollection {
         0x05.toByte(), 0x01.toByte(),               // USAGE_PAGE (Generic Desktop)
         0x09.toByte(), 0x06.toByte(),               // Usage (Keyboard)
         0xA1.toByte(), 0x01.toByte(),               // Collection (Application)
-        0x85.toByte(), 0x02.toByte(),               //     REPORT_ID (2)
+        0x85.toByte(), KeyboardReport.ID.toByte(),  //     REPORT_ID (2)
         0x05.toByte(), 0x07.toByte(),               //     Usage Page (Key Codes)
         0x19.toByte(), 0xe0.toByte(),               //     Usage Minimum (224)
         0x29.toByte(), 0xe7.toByte(),               //     Usage Maximum (231)
@@ -85,7 +88,7 @@ object DescriptorCollection {
         0x05.toByte(), 0x0c.toByte(),               // USAGE_PAGE (Consumer Devices)
         0x09.toByte(), 0x01.toByte(),               // USAGE (Consumer Control)
         0xA1.toByte(), 0x01.toByte(),               // Collection (Application)
-        0x85.toByte(), 0x03.toByte(),               //     REPORT_ID (3)
+        0x85.toByte(), ConsumerReport.ID.toByte(),  //     REPORT_ID (3)
         0x15.toByte(), 0x00.toByte(),               //     Logical Minimum (0)
         0x25.toByte(), 0x01.toByte(),               //     Logical Maximum (1)
         0x75.toByte(), 0x01.toByte(),               //     Report Size (1)
