@@ -12,6 +12,7 @@ import android.view.MotionEvent
 import androidx.core.content.PermissionChecker.PERMISSION_GRANTED
 import androidx.core.content.PermissionChecker.checkSelfPermission
 import tw.lospot.kin.wirelesshid.bluetooth.report.ConsumerReport
+import tw.lospot.kin.wirelesshid.bluetooth.report.FeatureReport
 import tw.lospot.kin.wirelesshid.bluetooth.report.KeyboardReport
 import tw.lospot.kin.wirelesshid.bluetooth.report.ScrollableTrackpadMouseReport
 import kotlin.properties.Delegates
@@ -35,7 +36,7 @@ class HidCallback(
                 onStateChanged()
             }
         }
-    private var device: BluetoothHidDevice? = null
+    private var hid: BluetoothHidDevice? = null
     private var targetState by Delegates.observable(State.INITIALIZED) { _, old, new ->
         if (old != new) {
             Log.v(TAG, "targetState $new")
@@ -64,6 +65,7 @@ class HidCallback(
     private val keyboardReport = KeyboardReport()
     private val consumerReport = ConsumerReport()
     private val mouseReport = ScrollableTrackpadMouseReport()
+    private val featureReport = FeatureReport()
     private val downKey = HashSet<Byte>()
     private val disconnectingTimeoutRunnable = Runnable {
         currentState = State.DISCONNECT_TIMEOUT
@@ -117,7 +119,7 @@ class HidCallback(
         }
 
         targetDevice?.let {
-            device!!.sendReport(it, ScrollableTrackpadMouseReport.ID, mouseReport.bytes)
+            hid!!.sendReport(it, ScrollableTrackpadMouseReport.ID, mouseReport.bytes)
         }
     }
 
@@ -129,8 +131,24 @@ class HidCallback(
         }
         mouseReport.setMove(dx, dy)
         currentDevice?.let {
-            device!!.sendReport(currentDevice, ScrollableTrackpadMouseReport.ID, mouseReport.bytes)
+            hid!!.sendReport(currentDevice, ScrollableTrackpadMouseReport.ID, mouseReport.bytes)
         }
+        mouseReport.setMove(0, 0)
+    }
+
+    fun sendMouseScroll(dx: Int, dy: Int) {
+        if (currentState != State.CONNECTED) return
+        if (!checkSelfPermission()) {
+            Log.w(TAG, "moveMouse(), Permission denied")
+            return
+        }
+        mouseReport.hScroll = dx.toByte()
+        mouseReport.vScroll = dy.toByte()
+        currentDevice?.let {
+            hid!!.sendReport(currentDevice, ScrollableTrackpadMouseReport.ID, mouseReport.bytes)
+        }
+        mouseReport.hScroll = 0
+        mouseReport.vScroll = 0
     }
 
     private fun scheduleNextState() {
@@ -206,8 +224,8 @@ class HidCallback(
             Log.w(TAG, "closeProxy(), Permission denied")
             return
         }
-        btAdapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, device)
-        device = null
+        btAdapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, hid)
+        hid = null
         currentState = State.INITIALIZED
     }
 
@@ -218,7 +236,7 @@ class HidCallback(
             Log.w(TAG, "registerApp(), Permission denied")
             return
         }
-        if (device!!.registerApp(sdpRecord, null, qosOut, context.mainExecutor, this)) {
+        if (hid!!.registerApp(sdpRecord, null, qosOut, context.mainExecutor, this)) {
             currentState = State.REGISTERING
         } else {
             Log.w(TAG, "registerApp(), Failed")
@@ -238,7 +256,7 @@ class HidCallback(
         if (currentState == State.CONNECTED) disconnect()
         currentDevice = null
         currentState = State.STOPPING
-        device!!.unregisterApp()
+        hid?.unregisterApp()
     }
 
     private fun connect() {
@@ -249,7 +267,7 @@ class HidCallback(
         }
         currentDevice = targetDevice
         currentState = State.CONNECTING
-        device!!.connect(targetDevice)
+        hid?.connect(targetDevice)
     }
 
     private fun disconnect() {
@@ -259,7 +277,7 @@ class HidCallback(
             return
         }
         currentState = State.DISCONNECTING
-        device!!.disconnect(currentDevice)
+        hid?.disconnect(currentDevice)
     }
 
     private fun sendKeyboardKey(keyEvent: Int, down: Boolean): Boolean {
@@ -284,7 +302,7 @@ class HidCallback(
         }
         keyboardReport.setKeys(downKey.toByteArray())
         targetDevice?.let {
-            device!!.sendReport(it, KeyboardReport.ID, keyboardReport.bytes)
+            hid?.sendReport(it, KeyboardReport.ID, keyboardReport.bytes)
         }
         return true
     }
@@ -306,7 +324,7 @@ class HidCallback(
             else -> return false
         }
         targetDevice?.let {
-            device!!.sendReport(it, ConsumerReport.ID, consumerReport.bytes)
+            hid?.sendReport(it, ConsumerReport.ID, consumerReport.bytes)
         }
         return true
     }
@@ -338,6 +356,19 @@ class HidCallback(
 
     override fun onGetReport(device: BluetoothDevice?, type: Byte, id: Byte, bufferSize: Int) {
         super.onGetReport(device, type, id, bufferSize)
+        if (!checkSelfPermission()) {
+            Log.w(TAG, "onGetReport(), Permission denied")
+            return
+        }
+
+        if (type == BluetoothHidDevice.REPORT_TYPE_FEATURE) {
+            featureReport.wheelResolutionMultiplier = true
+            featureReport.acPanResolutionMultiplier = true
+
+            val success =
+                hid?.replyReport(device, type, FeatureReport.ID, featureReport.bytes)
+            Log.v(TAG, "onGetReport replyReport $success")
+        }
     }
 
     override fun onSetReport(device: BluetoothDevice?, type: Byte, id: Byte, data: ByteArray?) {
@@ -393,14 +424,15 @@ class HidCallback(
     override fun onServiceConnected(profile: Int, bp: BluetoothProfile) {
         Log.v(TAG, "onServiceConnected($profile, $bp)")
         if (bp is BluetoothHidDevice) {
-            device = bp
+            hid = bp
             currentState = State.STOPPED
         }
     }
 
     override fun onServiceDisconnected(profile: Int) {
         Log.v(TAG, "onServiceDisconnected($profile)")
-        device = null
+        hid = null
+        currentDevice = null
         currentState = State.INITIALIZED
     }
 

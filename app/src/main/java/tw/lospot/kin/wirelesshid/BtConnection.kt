@@ -74,6 +74,7 @@ class BtConnection(
         sendMessage(BtService.ACTION_MOUSE_KEY, keycode, if (down) 1 else 0)
 
     fun moveMouse(dx: Int, dy: Int) = sendMessage(BtService.ACTION_MOUSE_MOVE, dx, dy)
+    fun scroll(dx: Int, dy: Int) = sendMessage(BtService.ACTION_MOUSE_SCROLL, dx, dy)
     fun switchPower() = sendMessage(BtService.ACTION_POWER)
     fun selectDevice(address: String?) =
         sendMessage(BtService.ACTION_SELECT_DEVICE, inData = Bundle().apply {

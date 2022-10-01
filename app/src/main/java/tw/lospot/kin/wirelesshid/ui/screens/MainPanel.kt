@@ -38,7 +38,8 @@ fun MainPanelScreen(
                             .weight(0.7f)
                             .padding(8.dp),
                         onKey = { keycode, down -> model.connection?.sendMouseKey(keycode, down) },
-                        onMove = { dx, dy -> model.connection?.moveMouse(dx, dy) }
+                        onMove = { dx, dy -> model.connection?.moveMouse(dx, dy) },
+                        onScroll = { dx, dy -> model.connection?.scroll(dx, dy) },
                     )
                     QwertKeyboard(
                         Modifier
@@ -59,7 +60,8 @@ fun MainPanelScreen(
                             .weight(0.3f)
                             .padding(horizontal = 8.dp),
                         onKey = { keycode, down -> model.connection?.sendMouseKey(keycode, down) },
-                        onMove = { dx, dy -> model.connection?.moveMouse(dx, dy) }
+                        onMove = { dx, dy -> model.connection?.moveMouse(dx, dy) },
+                        onScroll = { dx, dy -> model.connection?.scroll(dx, dy) },
                     )
                 }
             }

@@ -76,6 +76,7 @@ class BtService : Service(), Handler.Callback {
             }
             ACTION_MOUSE_MOVE -> hidCallback.sendMouseMove(msg.arg1, msg.arg2)
             ACTION_MOUSE_KEY -> hidCallback.sendMouseKey(msg.arg1, msg.arg2 == 1)
+            ACTION_MOUSE_SCROLL -> hidCallback.sendMouseScroll(msg.arg1, msg.arg2)
         }
         return true
     }
@@ -145,13 +146,13 @@ class BtService : Service(), Handler.Callback {
     }
 
     companion object {
-        private const val TAG = "BtService"
         const val ACTION_POWER = 1
         const val ACTION_STATUS = 2
         const val ACTION_SELECT_DEVICE = 3
         const val ACTION_KEY = 4
         const val ACTION_MOUSE_MOVE = 5
         const val ACTION_MOUSE_KEY = 6
+        const val ACTION_MOUSE_SCROLL = 7
     }
 
 }
