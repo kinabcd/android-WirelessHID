@@ -38,7 +38,7 @@ fun TouchPad(
                 detectTapAndDragGestures(
                     onPress = {
                         val rightOffset = size.width - it.x
-                        if (rightOffset < size.width / 20f && rightOffset < 50.dp.toPx()) {
+                        if (rightOffset < size.width / 10f && rightOffset < 50.dp.toPx()) {
                             scrollMode = true
                         }
                     },
