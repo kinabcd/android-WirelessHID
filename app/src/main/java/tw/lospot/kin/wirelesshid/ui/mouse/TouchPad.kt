@@ -17,7 +17,10 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.max
 
 @Composable
@@ -28,15 +31,20 @@ fun TouchPad(
     onScroll: (dx: Int, dy: Int) -> Unit,
 ) {
     Column(modifier = modifier) {
-        var scrollMode = remember { false }
-        var scrollOffset: Offset = remember { Offset.Zero }
+        val coroutineScope = rememberCoroutineScope()
         Box(modifier = Modifier
             .weight(1f)
             .fillMaxWidth()
             .border(BorderStroke(1.dp, Color.Gray))
             .pointerInput(Unit) {
+                var scrollMode = false
+                var scrollOffset = Offset.Zero
+                var runJobAfterDelay: Job? = null
+                var pendingJob: (() -> Unit)? = null
                 detectTapAndDragGestures(
                     onPress = {
+                        runJobAfterDelay?.cancel()
+                        runJobAfterDelay = null
                         val rightOffset = size.width - it.x
                         if (rightOffset < size.width / 10f && rightOffset < 50.dp.toPx()) {
                             scrollMode = true
@@ -59,11 +67,20 @@ fun TouchPad(
                     onRelease = { distance, maxCount, duration, position ->
                         scrollMode = false
                         scrollOffset = Offset.Zero
+                        pendingJob?.invoke()
+                        pendingJob = null
                         if (distance < 15 && duration < 150) {
                             when (maxCount) {
                                 1 -> {
                                     onKey(MotionEvent.BUTTON_PRIMARY, true)
-                                    onKey(MotionEvent.BUTTON_PRIMARY, false)
+                                    pendingJob = { onKey(MotionEvent.BUTTON_PRIMARY, false) }
+                                    runJobAfterDelay?.cancel()
+                                    runJobAfterDelay = coroutineScope.launch {
+                                        delay(150)
+                                        pendingJob?.invoke()
+                                        pendingJob = null
+                                        runJobAfterDelay = null
+                                    }
                                 }
                                 2 -> {
                                     onKey(MotionEvent.BUTTON_SECONDARY, true)
