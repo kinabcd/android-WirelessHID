@@ -94,7 +94,7 @@ private fun RotationCard(model: UiModel) {
                 RotationIcon(
                     model,
                     painterResource(id = R.drawable.ic_screen_rotation_alt),
-                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR,
                 )
                 RotationIcon(
                     model,
@@ -117,9 +117,13 @@ private fun RotationIcon(
     painter: Painter,
     value: Int,
 ) {
+    val selected = model.orientation == value
     PageButton(
         painter = painter,
-        selected = model.orientation == value,
-        onClick = { model.requestedOrientation = value }
+        selected = selected,
+        onClick = {
+            model.requestedOrientation =
+                if (selected) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else value
+        }
     )
 }
