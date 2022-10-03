@@ -2,6 +2,7 @@ package tw.lospot.kin.wirelesshid.ui.screens
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,6 +29,7 @@ fun MainPanelScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .systemGestureExclusion()
         ) {
             val orientation = LocalConfiguration.current.orientation
             if (orientation != Configuration.ORIENTATION_LANDSCAPE) {
@@ -35,16 +37,16 @@ fun MainPanelScreen(
                     TouchPad(
                         Modifier
                             .fillMaxWidth()
-                            .weight(0.7f)
-                            .padding(8.dp),
+                            .weight(0.65f),
                         onKey = { keycode, down -> model.connection?.sendMouseKey(keycode, down) },
                         onMove = { dx, dy -> model.connection?.moveMouse(dx, dy) },
                         onScroll = { dx, dy -> model.connection?.scroll(dx, dy) },
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
                     QwertKeyboard(
                         Modifier
                             .fillMaxWidth()
-                            .weight(0.3f)
+                            .weight(0.35f)
                     ) { keycode, down -> model.connection?.sendKey(keycode, down) }
                 }
             } else {
@@ -52,13 +54,13 @@ fun MainPanelScreen(
                     QwertKeyboard(
                         Modifier
                             .fillMaxHeight()
-                            .weight(0.7f)
+                            .weight(0.65f)
                     ) { keycode, down -> model.connection?.sendKey(keycode, down) }
+                    Spacer(modifier = Modifier.width(8.dp))
                     TouchPad(
                         Modifier
                             .fillMaxHeight()
-                            .weight(0.3f)
-                            .padding(horizontal = 8.dp),
+                            .weight(0.35f),
                         onKey = { keycode, down -> model.connection?.sendMouseKey(keycode, down) },
                         onMove = { dx, dy -> model.connection?.moveMouse(dx, dy) },
                         onScroll = { dx, dy -> model.connection?.scroll(dx, dy) },

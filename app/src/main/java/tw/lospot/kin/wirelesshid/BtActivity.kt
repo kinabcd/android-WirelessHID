@@ -19,7 +19,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowInsetsCompat.Type.navigationBars
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import androidx.navigation.compose.rememberNavController
 import tw.lospot.kin.wirelesshid.bluetooth.report.KeyboardReport
 import tw.lospot.kin.wirelesshid.ui.SetupNavGraph
@@ -50,6 +52,12 @@ class BtActivity : ComponentActivity() {
                     windowInsetsController.apply {
                         isAppearanceLightStatusBars = colors.isLight
                         isAppearanceLightNavigationBars = colors.isLight
+                    }
+                }
+                LaunchedEffect(true) {
+                    windowInsetsController.apply {
+                        systemBarsBehavior = BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                        hide(navigationBars())
                     }
                 }
                 LaunchedEffect(model.orientation) {
