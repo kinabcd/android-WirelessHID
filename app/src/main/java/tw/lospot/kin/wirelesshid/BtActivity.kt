@@ -47,7 +47,7 @@ class BtActivity : ComponentActivity() {
                 val colors = MaterialTheme.colors
                 val windowInsetsController =
                     remember { WindowInsetsControllerCompat(window, window.peekDecorView()) }
-                LaunchedEffect(colors) {
+                LaunchedEffect(colors.isLight, colors.primarySurface, colors.background) {
                     window.statusBarColor = colors.primarySurface.toArgb()
                     window.navigationBarColor = colors.background.toArgb()
                     windowInsetsController.apply {
