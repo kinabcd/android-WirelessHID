@@ -23,6 +23,7 @@ class UiModel : ViewModel(), SharedPreferences.OnSharedPreferenceChangeListener 
     var isConnected by mutableStateOf(false)
     var isRunning by mutableStateOf(false)
     var orientation by mutableStateOf(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
+    var isMainPanel by mutableStateOf(false)
 
     var preferences: SharedPreferences? = null
     var connection: BtConnection? = null

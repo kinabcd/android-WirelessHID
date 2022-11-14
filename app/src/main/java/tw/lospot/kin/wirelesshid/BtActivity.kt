@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat.Type.navigationBars
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -54,10 +55,11 @@ class BtActivity : ComponentActivity() {
                         isAppearanceLightNavigationBars = colors.isLight
                     }
                 }
-                LaunchedEffect(true) {
+                LaunchedEffect(model.isMainPanel) {
+                    WindowCompat.setDecorFitsSystemWindows(window, false)
                     windowInsetsController.apply {
                         systemBarsBehavior = BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                        hide(navigationBars())
+                        if (model.isMainPanel) hide(navigationBars()) else show(navigationBars())
                     }
                 }
                 LaunchedEffect(model.orientation) {

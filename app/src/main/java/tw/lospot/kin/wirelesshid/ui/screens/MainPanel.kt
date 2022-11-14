@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -24,6 +25,12 @@ fun MainPanelScreen(
     navController: NavController,
     model: UiModel = viewModel(),
 ) {
+    DisposableEffect(model) {
+        model.isMainPanel = true
+        onDispose {
+            model.isMainPanel = false
+        }
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
