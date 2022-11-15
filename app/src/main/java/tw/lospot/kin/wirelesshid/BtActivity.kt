@@ -61,6 +61,7 @@ class BtActivity : ComponentActivity() {
                         systemBarsBehavior = BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                         if (model.isMainPanel) hide(navigationBars()) else show(navigationBars())
                     }
+                    setShowWhenLocked(model.isMainPanel)
                 }
                 LaunchedEffect(model.orientation) {
                     requestedOrientation = model.orientation
