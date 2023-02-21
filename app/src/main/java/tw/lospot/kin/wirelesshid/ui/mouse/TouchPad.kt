@@ -8,7 +8,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.forEachGesture
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.Divider
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -17,6 +19,7 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -32,7 +35,7 @@ fun TouchPad(
 ) {
     Column(modifier = modifier) {
         val coroutineScope = rememberCoroutineScope()
-        Box(modifier = Modifier
+        BoxWithConstraints(modifier = Modifier
             .weight(1f)
             .fillMaxWidth()
             .border(BorderStroke(1.dp, Color.Gray))
@@ -41,6 +44,7 @@ fun TouchPad(
                 var scrollOffset = Offset.Zero
                 var runJobAfterDelay: Job? = null
                 var pendingJob: (() -> Unit)? = null
+                var keepJob: Job? = null
                 detectTapAndDragGestures(
                     onPress = {
                         runJobAfterDelay?.cancel()
@@ -48,6 +52,12 @@ fun TouchPad(
                         val rightOffset = size.width - it.x
                         if (rightOffset < size.width / 10f && rightOffset < 50.dp.toPx()) {
                             scrollMode = true
+                        }
+                        keepJob = coroutineScope.launch {
+                            while (true) {
+                                onMove(0, 0)
+                                delay(32)
+                            }
                         }
                     },
                     onDrag = { count, change, dragAmount ->
@@ -65,18 +75,20 @@ fun TouchPad(
                         }
                     },
                     onRelease = { distance, maxCount, duration, position ->
+                        keepJob?.cancel()
+                        keepJob = null
                         scrollMode = false
                         scrollOffset = Offset.Zero
                         pendingJob?.invoke()
                         pendingJob = null
-                        if (distance < 15 && duration < 150) {
+                        if (distance < 15 && duration < 100) {
                             when (maxCount) {
                                 1 -> {
                                     onKey(MotionEvent.BUTTON_PRIMARY, true)
                                     pendingJob = { onKey(MotionEvent.BUTTON_PRIMARY, false) }
                                     runJobAfterDelay?.cancel()
                                     runJobAfterDelay = coroutineScope.launch {
-                                        delay(150)
+                                        delay(100)
                                         pendingJob?.invoke()
                                         pendingJob = null
                                         runJobAfterDelay = null
@@ -95,7 +107,23 @@ fun TouchPad(
                     }
                 )
             }
-        )
+        ) {
+            val endPadding = min(maxWidth / 10, 50.dp)
+            Row(
+                Modifier
+                    .padding(horizontal = endPadding)
+                    .fillMaxSize(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Divider(
+                    modifier = Modifier
+                        .width((0.5f).dp)
+                        .fillMaxHeight(.8f),
+                    color = Color.Gray
+                )
+            }
+        }
         Row(Modifier.height(48.dp)) {
             MouseButton(
                 MotionEvent.BUTTON_PRIMARY,
