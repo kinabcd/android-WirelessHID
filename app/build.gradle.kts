@@ -1,4 +1,3 @@
-import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import java.util.Date
 import java.text.SimpleDateFormat
 
@@ -19,9 +18,6 @@ android {
         targetSdk = 33
         versionCode = 1
         versionName = "1.0_${sdf.format(currentDate)}"
-        vectorDrawables {
-            useSupportLibrary = true
-        }
     }
     buildTypes {
         getByName("release") {
@@ -30,36 +26,25 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
     }
-    productFlavors {
-    }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "11"
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
         compose = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.3.2"
-    }
-    packagingOptions {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-    }
-    lint {
-
+        kotlinCompilerExtensionVersion = "1.4.3"
     }
 }
 
 dependencies {
-    val kotlinVersion = getKotlinPluginVersion()
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVersion")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib")
+    implementation("org.jetbrains.kotlin:kotlin-reflect")
 
     val coreVersion = "1.9.0"
     implementation("androidx.core:core-ktx:$coreVersion")
@@ -77,7 +62,7 @@ dependencies {
 
     implementation("androidx.preference:preference-ktx:1.2.0")
 
-    val composeBom = platform("androidx.compose:compose-bom:2022.10.00")
+    val composeBom = platform("androidx.compose:compose-bom:2023.01.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
     implementation("androidx.compose.ui:ui")
