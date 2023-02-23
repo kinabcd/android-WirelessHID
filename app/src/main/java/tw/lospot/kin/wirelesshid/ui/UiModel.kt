@@ -1,20 +1,20 @@
 package tw.lospot.kin.wirelesshid.ui
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.os.Handler
 import android.os.HandlerThread
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
-import androidx.preference.PreferenceManager
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import tw.lospot.kin.wirelesshid.BtConnection
+import tw.lospot.kin.wirelesshid.BtSettings
 import tw.lospot.kin.wirelesshid.bluetooth.State
 
-class UiModel : ViewModel(), SharedPreferences.OnSharedPreferenceChangeListener {
+class UiModel : ViewModel() {
     private val backgroundThread by lazy { HandlerThread("UiBackground").apply { start() } }
     private val handler by lazy { Handler(backgroundThread.looper) }
     var selectedDevice: String? by mutableStateOf(null)
@@ -25,16 +25,7 @@ class UiModel : ViewModel(), SharedPreferences.OnSharedPreferenceChangeListener 
     var orientation by mutableStateOf(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
     var isMainPanel by mutableStateOf(false)
 
-    var preferences: SharedPreferences? = null
     var connection: BtConnection? = null
-
-    var requestedOrientation
-        get() = orientation
-        set(value) {
-            preferences?.edit {
-                putInt("requestedOrientation", value)
-            }
-        }
 
     fun init(outCtx: Context) {
         val context = outCtx.applicationContext
@@ -43,21 +34,10 @@ class UiModel : ViewModel(), SharedPreferences.OnSharedPreferenceChangeListener 
                 handler.post { it.bind() }
             }
         }
-        if (preferences == null) {
-            preferences = PreferenceManager.getDefaultSharedPreferences(context).also {
-                it.registerOnSharedPreferenceChangeListener(this)
-                onSharedPreferenceChanged(it, "")
+        viewModelScope.launch {
+            BtSettings(context).requestedOrientation.collect {
+                orientation = it
             }
-        }
-    }
-
-    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String) {
-        when (key) {
-            "" -> {
-                onSharedPreferenceChanged(sharedPreferences, "requestedOrientation")
-            }
-            "requestedOrientation" -> orientation =
-                sharedPreferences.getInt(key, ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
         }
     }
 
@@ -72,7 +52,6 @@ class UiModel : ViewModel(), SharedPreferences.OnSharedPreferenceChangeListener 
     }
 
     override fun onCleared() {
-        preferences?.unregisterOnSharedPreferenceChangeListener(this)
         handler.post {
             connection?.unbind()
             backgroundThread.quitSafely()

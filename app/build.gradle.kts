@@ -60,7 +60,7 @@ dependencies {
     implementation("androidx.activity:activity-ktx:$activityVersion")
     implementation("androidx.activity:activity-compose:$activityVersion")
 
-    implementation("androidx.preference:preference-ktx:1.2.0")
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
 
     val composeBom = platform("androidx.compose:compose-bom:2023.01.00")
     implementation(composeBom)

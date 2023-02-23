@@ -7,10 +7,7 @@ import android.content.pm.ActivityInfo
 import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
@@ -20,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch
+import tw.lospot.kin.wirelesshid.BtSettings
 import tw.lospot.kin.wirelesshid.BuildConfig
 import tw.lospot.kin.wirelesshid.R
 import tw.lospot.kin.wirelesshid.ui.*
@@ -118,12 +117,17 @@ private fun RotationIcon(
     value: Int,
 ) {
     val selected = model.orientation == value
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     PageButton(
         painter = painter,
         selected = selected,
         onClick = {
-            model.requestedOrientation =
-                if (selected) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else value
+            scope.launch {
+                BtSettings(context).setRequestedOrientation(
+                    if (selected) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else value
+                )
+            }
         }
     )
 }
