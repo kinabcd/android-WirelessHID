@@ -6,7 +6,8 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.*
+import androidx.compose.material.Divider
+import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.Painter
@@ -57,6 +58,7 @@ fun SettingsScreen(
                 navController.navigate(DEVICES)
             }
             RotationCard(model)
+            KeepScreenOnCard(model)
             Divider(
                 Modifier
                     .fillMaxWidth()
@@ -130,4 +132,17 @@ private fun RotationIcon(
             }
         }
     )
+}
+
+@Composable
+private fun KeepScreenOnCard(
+    model: UiModel,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    TwoLineInfoCard(stringResource(R.string.keep_screen_on), "${model.keepScreenOn}") {
+        scope.launch {
+            BtSettings(context).setRequestedKeepScreenOn(!model.keepScreenOn)
+        }
+    }
 }

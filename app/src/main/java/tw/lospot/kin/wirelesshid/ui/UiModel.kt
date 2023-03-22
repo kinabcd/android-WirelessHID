@@ -4,11 +4,14 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import tw.lospot.kin.wirelesshid.BtConnection
 import tw.lospot.kin.wirelesshid.BtSettings
@@ -23,6 +26,7 @@ class UiModel : ViewModel() {
     var isConnected by mutableStateOf(false)
     var isRunning by mutableStateOf(false)
     var orientation by mutableStateOf(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
+    var keepScreenOn by mutableStateOf(true)
     var isMainPanel by mutableStateOf(false)
 
     var connection: BtConnection? = null
@@ -34,9 +38,10 @@ class UiModel : ViewModel() {
                 handler.post { it.bind() }
             }
         }
-        viewModelScope.launch {
-            BtSettings(context).requestedOrientation.collect {
-                orientation = it
+        with(viewModelScope) {
+            BtSettings(context).apply {
+                launch { requestedOrientation.collect { orientation = it } }
+                launch { requestedKeepScreenOn.collect { keepScreenOn = it } }
             }
         }
     }

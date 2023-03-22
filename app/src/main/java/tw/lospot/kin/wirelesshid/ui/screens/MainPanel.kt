@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -19,6 +20,7 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import tw.lospot.kin.wirelesshid.R
+import tw.lospot.kin.wirelesshid.bluetooth.State
 import tw.lospot.kin.wirelesshid.ui.PageButton
 import tw.lospot.kin.wirelesshid.ui.SETTINGS
 import tw.lospot.kin.wirelesshid.ui.UiModel
@@ -31,6 +33,9 @@ fun MainPanelScreen(
     navController: NavController,
     model: UiModel = viewModel(),
 ) {
+    if (model.state == State.CONNECTED && model.keepScreenOn) {
+        KeepScreenOn()
+    }
     DisposableEffect(model) {
         model.isMainPanel = true
         onDispose {
@@ -112,6 +117,17 @@ fun MainPanelScreen(
                 onClick = { navController.navigate(SETTINGS) },
             )
             Spacer(modifier = Modifier.width(32.dp))
+        }
+    }
+}
+
+@Composable
+fun KeepScreenOn() {
+    val currentView = LocalView.current
+    DisposableEffect(Unit) {
+        currentView.keepScreenOn = true
+        onDispose {
+            currentView.keepScreenOn = false
         }
     }
 }
