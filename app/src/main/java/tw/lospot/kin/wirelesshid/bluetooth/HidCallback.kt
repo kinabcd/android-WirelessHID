@@ -32,6 +32,7 @@ class HidCallback(
             val new = value && checkSelfPermission()
             if (field != new) {
                 field = new
+                retryCountDown = 5
                 updateTargetState()
                 onStateChanged()
             }
@@ -71,7 +72,9 @@ class HidCallback(
         currentState = State.DISCONNECT_TIMEOUT
     }
 
+    private var retryCountDown = 0
     private val retryTimeoutRunnable = Runnable {
+        if (retryCountDown > 1) retryCountDown -= 1 else isRunning = false
         currentState = State.REGISTERED
     }
     private val nextStateRunnable = Runnable {
@@ -84,6 +87,7 @@ class HidCallback(
             Log.w(TAG, "selectDevice(), Permission denied")
             return
         }
+        retryCountDown = 5
         targetDevice = btAdapter.bondedDevices.firstOrNull { it.address == address }
     }
 
@@ -180,11 +184,14 @@ class HidCallback(
             State.DISCONNECTING -> {
                 handler.postDelayed(disconnectingTimeoutRunnable, 5000)
             }
-            State.CONNECTED -> when (targetState) {
-                State.INITIALIZED -> unregisterApp()
-                State.REGISTERED -> disconnect()
-                State.CONNECTED -> if (targetDevice != currentDevice) disconnect()
-                else -> {}
+            State.CONNECTED -> {
+                retryCountDown = 5
+                when (targetState) {
+                    State.INITIALIZED -> unregisterApp()
+                    State.REGISTERED -> disconnect()
+                    State.CONNECTED -> if (targetDevice != currentDevice) disconnect()
+                    else -> {}
+                }
             }
             State.STOPPING -> {}
             State.CONNECT_FAIL -> when (targetState) {
@@ -193,7 +200,7 @@ class HidCallback(
                     unregisterApp()
                 }
                 State.CONNECTED -> {
-                    Log.w(TAG, "Retry after 5s")
+                    Log.w(TAG, "Retry after 5s, retry=$retryCountDown")
                     handler.postDelayed(retryTimeoutRunnable, 5000)
                 }
                 else -> {}
