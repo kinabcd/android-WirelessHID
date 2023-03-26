@@ -104,6 +104,11 @@ private fun RotationCard(model: UiModel) {
                 )
                 RotationIcon(
                     model,
+                    painterResource(id = R.drawable.ic_screen_lock_landscape),
+                    ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,
+                )
+                RotationIcon(
+                    model,
                     painterResource(id = R.drawable.ic_screen_lock_portrait),
                     ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
                 )
