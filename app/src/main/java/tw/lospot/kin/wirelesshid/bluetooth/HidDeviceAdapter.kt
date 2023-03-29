@@ -17,17 +17,17 @@ import tw.lospot.kin.wirelesshid.bluetooth.report.KeyboardReport
 import tw.lospot.kin.wirelesshid.bluetooth.report.ScrollableTrackpadMouseReport
 import kotlin.properties.Delegates
 
-class HidCallback(
+class HidDeviceAdapter(
     private val context: Context,
     private val btAdapter: BluetoothAdapter,
     private val handler: Handler = Handler(Looper.getMainLooper()),
     private val onStateChanged: () -> Unit,
-) : BluetoothHidDevice.Callback(), BluetoothProfile.ServiceListener {
+) : HidController, BluetoothHidDevice.Callback(), BluetoothProfile.ServiceListener {
     companion object {
         private const val TAG = "HidCallback"
     }
 
-    var isRunning = false
+    override var isRunning = false
         set(value) {
             val new = value && checkSelfPermission()
             if (field != new) {
@@ -45,13 +45,13 @@ class HidCallback(
             onStateChanged()
         }
     }
-    var targetDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ ->
+    override var targetDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ ->
         updateTargetState()
         scheduleNextState()
         onStateChanged()
     }
         private set
-    var currentState by Delegates.observable(State.INITIALIZED) { _, old, new ->
+    override var currentState by Delegates.observable(State.INITIALIZED) { _, old, new ->
         if (old != new) {
             Log.v(TAG, "currentState $new")
             scheduleNextState()
@@ -59,7 +59,7 @@ class HidCallback(
         }
     }
         private set
-    var currentDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ ->
+    override var currentDevice: BluetoothDevice? by Delegates.observable(null) { _, _, _ ->
         onStateChanged()
     }
         private set
@@ -81,7 +81,7 @@ class HidCallback(
         nextState()
     }
 
-    fun selectDevice(address: String?) {
+    override fun selectDevice(address: String?) {
         Log.v(TAG, "selectDevice($address)")
         if (!checkSelfPermission()) {
             Log.w(TAG, "selectDevice(), Permission denied")
@@ -99,7 +99,7 @@ class HidCallback(
         }
     }
 
-    fun sendKey(keyEvent: Int, down: Boolean) {
+    override fun sendKey(keyEvent: Int, down: Boolean) {
         if (currentState != State.CONNECTED) return
         if (!checkSelfPermission()) {
             Log.w(TAG, "sendKey(), Permission denied")
@@ -109,7 +109,7 @@ class HidCallback(
         if (sendKeyboardKey(keyEvent, down)) return
     }
 
-    fun sendMouseKey(keyEventCode: Int, down: Boolean) {
+    override fun sendMouseKey(keyEventCode: Int, down: Boolean) {
         if (currentState != State.CONNECTED) return
         if (!checkSelfPermission()) {
             Log.w(TAG, "moveMouse(), Permission denied")
@@ -127,7 +127,7 @@ class HidCallback(
         }
     }
 
-    fun sendMouseMove(dx: Int, dy: Int) {
+    override fun sendMouseMove(dx: Int, dy: Int) {
         if (currentState != State.CONNECTED) return
         if (!checkSelfPermission()) {
             Log.w(TAG, "moveMouse(), Permission denied")
@@ -140,7 +140,7 @@ class HidCallback(
         mouseReport.setMove(0, 0)
     }
 
-    fun sendMouseScroll(dx: Int, dy: Int) {
+    override fun sendMouseScroll(dx: Int, dy: Int) {
         if (currentState != State.CONNECTED) return
         if (!checkSelfPermission()) {
             Log.w(TAG, "moveMouse(), Permission denied")

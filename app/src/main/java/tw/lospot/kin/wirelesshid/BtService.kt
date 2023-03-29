@@ -12,7 +12,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
 import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.*
-import tw.lospot.kin.wirelesshid.bluetooth.HidCallback
+import tw.lospot.kin.wirelesshid.bluetooth.HidDeviceAdapter
+import tw.lospot.kin.wirelesshid.bluetooth.HidController
 import tw.lospot.kin.wirelesshid.bluetooth.State
 import kotlin.properties.Delegates
 
@@ -26,8 +27,8 @@ class BtService : Service(), Handler.Callback {
     private val btManager by lazy { getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager }
     private val btAdapter by lazy { btManager.adapter }
     private val btSettings by lazy { BtSettings(context) }
-    private val hidCallback by lazy {
-        HidCallback(context, btAdapter) {
+    private val hidController: HidController by lazy {
+        HidDeviceAdapter(context, btAdapter) {
             updateServiceState()
             notifyStatus()
         }
@@ -53,7 +54,7 @@ class BtService : Service(), Handler.Callback {
         super.onCreate()
         scope.launch {
             btSettings.selectedAddress.collect {
-                hidCallback.selectDevice(it)
+                hidController.selectDevice(it)
             }
         }
     }
@@ -73,16 +74,16 @@ class BtService : Service(), Handler.Callback {
 
     override fun handleMessage(msg: Message): Boolean {
         when (msg.what) {
-            ACTION_POWER -> hidCallback.isRunning = !hidCallback.isRunning
+            ACTION_POWER -> hidController.isRunning = !hidController.isRunning
             ACTION_STATUS -> status(msg.replyTo, msg.arg1 == 1)
-            ACTION_KEY -> hidCallback.sendKey(msg.arg1, msg.arg2 == 1)
+            ACTION_KEY -> hidController.sendKey(msg.arg1, msg.arg2 == 1)
             ACTION_SELECT_DEVICE -> {
                 val address = msg.data.getString("address", "") ?: ""
                 scope.launch { btSettings.setSelectedAddress(address) }
             }
-            ACTION_MOUSE_MOVE -> hidCallback.sendMouseMove(msg.arg1, msg.arg2)
-            ACTION_MOUSE_KEY -> hidCallback.sendMouseKey(msg.arg1, msg.arg2 == 1)
-            ACTION_MOUSE_SCROLL -> hidCallback.sendMouseScroll(msg.arg1, msg.arg2)
+            ACTION_MOUSE_MOVE -> hidController.sendMouseMove(msg.arg1, msg.arg2)
+            ACTION_MOUSE_KEY -> hidController.sendMouseKey(msg.arg1, msg.arg2 == 1)
+            ACTION_MOUSE_SCROLL -> hidController.sendMouseScroll(msg.arg1, msg.arg2)
         }
         return true
     }
@@ -104,10 +105,10 @@ class BtService : Service(), Handler.Callback {
 
     private fun sendStatus(replyTo: Messenger) {
         val outData = Bundle().apply {
-            putBoolean("isRunning", hidCallback.isRunning)
-            putString("state", hidCallback.currentState.name)
-            putString("current", hidCallback.currentDevice?.address)
-            putString("selected", hidCallback.targetDevice?.address)
+            putBoolean("isRunning", hidController.isRunning)
+            putString("state", hidController.currentState.name)
+            putString("current", hidController.currentDevice?.address)
+            putString("selected", hidController.targetDevice?.address)
         }
         replyTo.send(Message.obtain().apply {
             what = ACTION_STATUS
@@ -116,7 +117,7 @@ class BtService : Service(), Handler.Callback {
     }
 
     private fun updateServiceState() {
-        isForeground = hidCallback.currentState != State.INITIALIZED
+        isForeground = hidController.currentState != State.INITIALIZED
     }
 
     private fun createChannel() {
