@@ -14,6 +14,7 @@ import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.*
 import tw.lospot.kin.wirelesshid.bluetooth.HidDeviceAdapter
 import tw.lospot.kin.wirelesshid.bluetooth.HidController
+import tw.lospot.kin.wirelesshid.bluetooth.HidOverGattAdapter
 import tw.lospot.kin.wirelesshid.bluetooth.State
 import kotlin.properties.Delegates
 
