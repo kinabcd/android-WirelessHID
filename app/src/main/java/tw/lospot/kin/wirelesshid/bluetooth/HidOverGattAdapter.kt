@@ -43,8 +43,8 @@ class HidOverGattAdapter(
     private val btLeAdvertiser = btAdapter.bluetoothLeAdvertiser
     private var gattServer: BluetoothGattServer? = null
     private var batteryLevel: Byte = 99
-    private var hidNotificationValue = BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
-    private var batteryNotificationValue = BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+    private val hidNotificationValue = HashMap<String, ByteArray?>()
+    private val batteryNotificationValue = HashMap<String, ByteArray?>()
     private var protocolMode: Byte = 1
     private val keyboardReport = KeyboardReport()
     private val consumerReport = ConsumerReport()
@@ -103,7 +103,7 @@ class HidOverGattAdapter(
             Log.w(TAG, "selectDevice(), Permission denied")
             return
         }
-        targetDevice = btAdapter.bondedDevices.firstOrNull { it.address == address }
+        targetDevice = if (address.isNullOrEmpty()) null else btAdapter.getRemoteDevice(address)
     }
 
     override fun sendKey(keyEvent: Int, down: Boolean) {
@@ -236,13 +236,14 @@ class HidOverGattAdapter(
             return
         }
         if (targetDevice == currentDevice && targetState == currentState) return
+        handler.removeCallbacks(disconnectingTimeoutRunnable)
         when (currentState) {
-            State.INITIALIZED -> if (targetState != State.INITIALIZED) startAdvertising()
+            State.INITIALIZED -> if (targetState != State.INITIALIZED) registerApp()
             State.PROXYING -> {}
-            State.STOPPED -> if (targetState != State.INITIALIZED) registerApp() else stopAdvertising()
+            State.STOPPED -> if (targetState != State.INITIALIZED) startAdvertising() else unregisterApp()
             State.REGISTERING -> {}
             State.REGISTERED -> when (targetState) {
-                State.INITIALIZED -> unregisterApp()
+                State.INITIALIZED -> stopAdvertising()
                 State.CONNECTED -> connect()
                 else -> {}
             }
@@ -264,7 +265,8 @@ class HidOverGattAdapter(
             State.STOPPING -> {}
             State.CONNECT_FAIL -> when (targetState) {
                 State.INITIALIZED -> {
-                    unregisterApp()
+                    handler.removeCallbacks(retryTimeoutRunnable)
+                    stopAdvertising()
                 }
                 State.CONNECTED -> {
                     handler.postDelayed(retryTimeoutRunnable, 5000)
@@ -273,7 +275,7 @@ class HidOverGattAdapter(
             }
             State.DISCONNECT_TIMEOUT -> {
                 Log.w(TAG, "Disconnecting timeout")
-                unregisterApp()
+                stopAdvertising()
             }
         }
     }
@@ -285,19 +287,18 @@ class HidOverGattAdapter(
             return
         }
         val advertiseSettings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .setConnectable(true)
             .setTimeout(0)
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
             .build()
-
 
         // set up advertising data
         val advertiseData = AdvertiseData.Builder()
-            .setIncludeTxPowerLevel(false)
             .setIncludeDeviceName(true)
             .addServiceUuid(SERVICE_BLE_HID.parcelUuid)
             .build()
+        currentState = State.REGISTERING
         btLeAdvertiser.startAdvertising(advertiseSettings, advertiseData, advertiseCallback)
     }
 
@@ -313,7 +314,7 @@ class HidOverGattAdapter(
             // BT Adapter is not turned ON
             Log.w(TAG, e)
         }
-        currentState = State.INITIALIZED
+        currentState = State.STOPPED
     }
 
     private var waitingForAddedService = emptyList<BluetoothGattService>()
@@ -330,15 +331,15 @@ class HidOverGattAdapter(
             GattService.hidService(),
         )
         if (gattServer != null) {
-            currentState = State.REGISTERING
+            currentState = State.PROXYING
             ContextCompat.registerReceiver(
                 context, batteryObserver, IntentFilter(Intent.ACTION_BATTERY_CHANGED),
                 ContextCompat.RECEIVER_NOT_EXPORTED
             )?.let { updateBatteryLevel(it) }
-            addServices()
+            handler.post { addServices() }
         } else {
             isRunning = false
-            currentState = State.REGISTER_FAIL
+            currentState = State.INITIALIZED
         }
     }
 
@@ -348,7 +349,7 @@ class HidOverGattAdapter(
             return
         }
         if (waitingForAddedService.isEmpty()) {
-            currentState = State.REGISTERED
+            currentState = State.STOPPED
             return
         }
         gattServer?.addService(waitingForAddedService.last())
@@ -362,9 +363,12 @@ class HidOverGattAdapter(
             return
         }
         context.unregisterReceiver(batteryObserver)
-        gattServer?.close()
+        gattServer?.let {gattServer ->
+            gattServer.clearServices()
+            gattServer.close()
+        }
         gattServer = null
-        currentState = State.STOPPED
+        currentState = State.INITIALIZED
     }
 
     private fun connect() {
@@ -376,6 +380,9 @@ class HidOverGattAdapter(
         currentDevice = targetDevice
         currentState = State.CONNECTING
         gattServer?.connect(targetDevice, false)
+        if (targetDevice?.bondState == BluetoothDevice.BOND_NONE) {
+            targetDevice?.createBond()
+        }
     }
 
     private fun disconnect() {
@@ -392,14 +399,121 @@ class HidOverGattAdapter(
     private val advertiseCallback: AdvertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
             Log.v(TAG, "onStartSuccess: $settingsInEffect")
-            currentState = State.STOPPED
+            currentState = State.REGISTERED
         }
 
         override fun onStartFailure(errorCode: Int) {
             Log.v(TAG, "onStartFailure: $errorCode")
             isRunning = false
-            currentState = State.INITIALIZED
+            currentState = State.STOPPED
         }
+    }
+
+    private fun onCharacteristicReadRequest(
+        device: BluetoothDevice?, requestId: Int, offset: Int,
+        characteristic: BluetoothGattCharacteristic?
+    ) {
+        Log.v(
+            TAG,
+            "onCharacteristicReadRequest: $device, $requestId, $offset, ${characteristic?.uuid}"
+        )
+        if (device == null || characteristic == null) return
+        if (!checkSelfPermission()) return
+        val response: ByteArray? = when (characteristic.service.uuid) {
+            SERVICE_BATTERY.uuid -> byteArrayOf(batteryLevel)
+            SERVICE_DEVICE_INFORMATION.uuid -> when (characteristic.uuid) {
+                CHARACTERISTIC_MANUFACTURER_NAME.uuid -> "LoSpot".toByteArray()
+                CHARACTERISTIC_MODEL_NUMBER.uuid -> "BLE HID".toByteArray()
+                CHARACTERISTIC_SERIAL_NUMBER.uuid -> "1".toByteArray()
+                else -> byteArrayOf()
+            }
+            SERVICE_BLE_HID.uuid -> when (characteristic.uuid) {
+                CHARACTERISTIC_HID_INFORMATION.uuid -> byteArrayOf(0x11, 0x01, 0x00, 0x03)
+                CHARACTERISTIC_REPORT_MAP.uuid ->
+                    if (DescriptorCollection.MOUSE_KEYBOARD_COMBO.size - offset <= 0) byteArrayOf()
+                    else DescriptorCollection.MOUSE_KEYBOARD_COMBO.drop(offset).toByteArray()
+                CHARACTERISTIC_PROTOCOL_MODE.uuid -> byteArrayOf(protocolMode)
+                CHARACTERISTIC_HID_CONTROL_POINT.uuid -> byteArrayOf(0x00)
+                CHARACTERISTIC_REPORT.uuid -> byteArrayOf()
+                else -> byteArrayOf()
+            }
+            else -> byteArrayOf()
+        }
+        gattServer?.sendResponse(
+            device, requestId, BluetoothGatt.GATT_SUCCESS, offset, response
+        )
+    }
+
+    private fun onCharacteristicWriteRequest(
+        device: BluetoothDevice?, requestId: Int, characteristic: BluetoothGattCharacteristic?,
+        preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
+    ) {
+        Log.v(
+            TAG, "onCharacteristicWriteRequest: " +
+                    "$device, $requestId, ${characteristic?.uuid}, " +
+                    "$preparedWrite, $responseNeeded, $offset, $value"
+        )
+        if (device == null || characteristic == null) return
+        if (!responseNeeded) return
+        if (!checkSelfPermission()) return
+        gattServer?.sendResponse(
+            device, requestId, BluetoothGatt.GATT_SUCCESS, offset, byteArrayOf()
+        )
+    }
+
+    private fun onDescriptorReadRequest(
+        device: BluetoothDevice?, requestId: Int, offset: Int,
+        descriptor: BluetoothGattDescriptor?
+    ) {
+        Log.v(TAG, "onDescriptorReadRequest: $device, $requestId, $offset, ${descriptor?.uuid}")
+        if (device == null || descriptor == null) return
+        if (!checkSelfPermission()) return
+        val response: ByteArray? = when (descriptor.characteristic.service.uuid) {
+            SERVICE_BATTERY.uuid -> when (descriptor.uuid) {
+                DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION.uuid ->
+                    batteryNotificationValue[device.address] ?: BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                else -> byteArrayOf()
+            }
+            SERVICE_BLE_HID.uuid -> when (descriptor.uuid) {
+                DESCRIPTOR_REPORT_REFERENCE.uuid -> byteArrayOf(0x00, 0x01)
+                DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION.uuid ->
+                    hidNotificationValue[device.address] ?: BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+                else -> byteArrayOf()
+            }
+            else -> byteArrayOf()
+        }
+        gattServer?.sendResponse(
+            device, requestId, BluetoothGatt.GATT_SUCCESS, offset, response
+        )
+    }
+
+    private fun onDescriptorWriteRequest(
+        device: BluetoothDevice?, requestId: Int, descriptor: BluetoothGattDescriptor?,
+        preparedWrite: Boolean, responseNeeded: Boolean, offset: Int,
+        value: ByteArray?
+    ) {
+        Log.v(
+            TAG, "onDescriptorWriteRequest: " +
+                    "$device, $requestId, ${descriptor?.uuid}, " +
+                    "$preparedWrite, $responseNeeded, $offset, $value"
+        )
+        if (device == null || descriptor == null) return
+        when (descriptor.characteristic.service.uuid) {
+            SERVICE_BATTERY.uuid -> when (descriptor.uuid) {
+                DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION.uuid ->
+                    batteryNotificationValue[device.address] = value
+            }
+            SERVICE_BLE_HID.uuid -> when (descriptor.uuid) {
+                DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION.uuid ->
+                    hidNotificationValue[device.address] = value
+            }
+            else -> byteArrayOf()
+        }
+        if (!responseNeeded) return
+        if (!checkSelfPermission()) return
+        gattServer?.sendResponse(
+            device, requestId, BluetoothGatt.GATT_SUCCESS, offset, byteArrayOf()
+        )
     }
 
     private val gattServerCallback = object : BluetoothGattServerCallback() {
@@ -414,7 +528,9 @@ class HidOverGattAdapter(
                 BluetoothProfile.STATE_DISCONNECTED -> currentState = when (currentState) {
                     State.CONNECT_FAIL -> State.CONNECT_FAIL
                     State.CONNECTING -> State.CONNECT_FAIL
-                    else -> State.REGISTERED
+                    State.CONNECTED -> State.REGISTERED
+                    State.DISCONNECTING -> State.REGISTERED
+                    else -> currentState
                 }
             }
         }
@@ -422,7 +538,7 @@ class HidOverGattAdapter(
         override fun onServiceAdded(status: Int, service: BluetoothGattService?) {
             super.onServiceAdded(status, service)
             Log.v(TAG, "onServiceAdded: $status, $service")
-            addServices()
+            handler.post { addServices() }
         }
 
         override fun onCharacteristicReadRequest(
@@ -430,35 +546,11 @@ class HidOverGattAdapter(
             characteristic: BluetoothGattCharacteristic?
         ) {
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
-            Log.v(
-                TAG,
-                "onCharacteristicReadRequest: $device, $requestId, $offset, ${characteristic?.uuid}"
-            )
-            if (device == null || characteristic == null) return
-            if (!checkSelfPermission()) return
-            val response: ByteArray? = when (characteristic.service.uuid) {
-                SERVICE_BATTERY.uuid -> byteArrayOf(batteryLevel)
-                SERVICE_DEVICE_INFORMATION.uuid -> when (characteristic.uuid) {
-                    CHARACTERISTIC_MANUFACTURER_NAME.uuid -> "LoSpot".toByteArray()
-                    CHARACTERISTIC_MODEL_NUMBER.uuid -> "BLE HID".toByteArray()
-                    CHARACTERISTIC_SERIAL_NUMBER.uuid -> "1".toByteArray()
-                    else -> byteArrayOf()
-                }
-                SERVICE_BLE_HID.uuid -> when (characteristic.uuid) {
-                    CHARACTERISTIC_HID_INFORMATION.uuid -> byteArrayOf(0x11, 0x01, 0x00, 0x03)
-                    CHARACTERISTIC_REPORT_MAP.uuid ->
-                        if (DescriptorCollection.MOUSE_KEYBOARD_COMBO.size - offset <= 0) null
-                        else DescriptorCollection.MOUSE_KEYBOARD_COMBO.drop(offset).toByteArray()
-                    CHARACTERISTIC_PROTOCOL_MODE.uuid -> byteArrayOf(protocolMode)
-                    CHARACTERISTIC_HID_CONTROL_POINT.uuid -> byteArrayOf(0x00)
-                    CHARACTERISTIC_REPORT.uuid -> byteArrayOf()
-                    else -> byteArrayOf()
-                }
-                else -> byteArrayOf()
+            handler.post {
+                this@HidOverGattAdapter.onCharacteristicReadRequest(
+                    device, requestId, offset, characteristic
+                )
             }
-            gattServer?.sendResponse(
-                device, requestId, BluetoothGatt.GATT_SUCCESS, offset, response
-            )
         }
 
         override fun onCharacteristicWriteRequest(
@@ -468,17 +560,11 @@ class HidOverGattAdapter(
             super.onCharacteristicWriteRequest(
                 device, requestId, characteristic, preparedWrite, responseNeeded, offset, value
             )
-            Log.v(
-                TAG, "onCharacteristicWriteRequest: " +
-                        "$device, $requestId, ${characteristic?.uuid}, " +
-                        "$preparedWrite, $responseNeeded, $offset, $value"
-            )
-            if (device == null || characteristic == null) return
-            if (!responseNeeded) return
-            if (!checkSelfPermission()) return
-            gattServer?.sendResponse(
-                device, requestId, BluetoothGatt.GATT_SUCCESS, offset, byteArrayOf()
-            )
+            handler.post {
+                this@HidOverGattAdapter.onCharacteristicWriteRequest(
+                    device, requestId, characteristic, preparedWrite, responseNeeded, offset, value
+                )
+            }
         }
 
         override fun onDescriptorReadRequest(
@@ -486,24 +572,11 @@ class HidOverGattAdapter(
             descriptor: BluetoothGattDescriptor?
         ) {
             super.onDescriptorReadRequest(device, requestId, offset, descriptor)
-            Log.v(TAG, "onDescriptorReadRequest: $device, $requestId, $offset, ${descriptor?.uuid}")
-            if (device == null || descriptor == null) return
-            if (!checkSelfPermission()) return
-            val response: ByteArray? = when (descriptor.characteristic.service.uuid) {
-                SERVICE_BATTERY.uuid -> when (descriptor.uuid) {
-                    DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION.uuid -> batteryNotificationValue
-                    else -> byteArrayOf()
-                }
-                SERVICE_BLE_HID.uuid -> when (descriptor.uuid) {
-                    DESCRIPTOR_REPORT_REFERENCE.uuid -> byteArrayOf(0x00, 0x01)
-                    DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION.uuid -> hidNotificationValue
-                    else -> byteArrayOf()
-                }
-                else -> byteArrayOf()
+            handler.post {
+                this@HidOverGattAdapter.onDescriptorReadRequest(
+                    device, requestId, offset, descriptor
+                )
             }
-            gattServer?.sendResponse(
-                device, requestId, BluetoothGatt.GATT_SUCCESS, offset, response
-            )
         }
 
         override fun onDescriptorWriteRequest(
@@ -512,31 +585,13 @@ class HidOverGattAdapter(
             value: ByteArray?
         ) {
             super.onDescriptorWriteRequest(
-                device, requestId, descriptor,
-                preparedWrite, responseNeeded, offset, value
+                device, requestId, descriptor, preparedWrite, responseNeeded, offset, value
             )
-            Log.v(
-                TAG, "onDescriptorWriteRequest: " +
-                        "$device, $requestId, ${descriptor?.uuid}, " +
-                        "$preparedWrite, $responseNeeded, $offset, $value"
-            )
-            if (device == null || descriptor == null) return
-            when (descriptor.characteristic.service.uuid) {
-                SERVICE_BATTERY.uuid -> when (descriptor.uuid) {
-                    DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION.uuid ->
-                        batteryNotificationValue = value
-                }
-                SERVICE_BLE_HID.uuid -> when (descriptor.uuid) {
-                    DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION.uuid ->
-                        hidNotificationValue = value
-                }
-                else -> byteArrayOf()
+            handler.post {
+                this@HidOverGattAdapter.onDescriptorWriteRequest(
+                    device, requestId, descriptor, preparedWrite, responseNeeded, offset, value
+                )
             }
-            if (!responseNeeded) return
-            if (!checkSelfPermission()) return
-            gattServer?.sendResponse(
-                device, requestId, BluetoothGatt.GATT_SUCCESS, offset, byteArrayOf()
-            )
         }
 
         override fun onExecuteWrite(device: BluetoothDevice?, requestId: Int, execute: Boolean) {

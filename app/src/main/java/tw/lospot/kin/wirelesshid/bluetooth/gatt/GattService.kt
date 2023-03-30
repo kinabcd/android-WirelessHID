@@ -56,13 +56,6 @@ object GattService {
             PROPERTY_READ,
             PERMISSION_READ_ENCRYPTED
         )
-        characteristic(
-            CHARACTERISTIC_PROTOCOL_MODE,
-            PROPERTY_READ or PROPERTY_WRITE_NO_RESPONSE,
-            PERMISSION_READ_ENCRYPTED or PERMISSION_WRITE_ENCRYPTED
-        ) {
-            writeType = WRITE_TYPE_NO_RESPONSE
-        }
 
         characteristic(
             CHARACTERISTIC_HID_CONTROL_POINT,
@@ -80,28 +73,6 @@ object GattService {
                 DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION,
                 BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
             )
-            descriptor(
-                DESCRIPTOR_REPORT_REFERENCE,
-                BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
-            )
-        }
-        characteristic(
-            CHARACTERISTIC_REPORT,
-            PROPERTY_READ or PROPERTY_WRITE or PROPERTY_WRITE_NO_RESPONSE,
-            PERMISSION_READ_ENCRYPTED or PERMISSION_WRITE_ENCRYPTED
-        ) {
-            writeType = WRITE_TYPE_NO_RESPONSE
-            descriptor(
-                DESCRIPTOR_REPORT_REFERENCE,
-                BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
-            )
-        }
-
-        characteristic(
-            CHARACTERISTIC_REPORT,
-            PROPERTY_READ or PROPERTY_WRITE,
-            PERMISSION_READ_ENCRYPTED or PERMISSION_WRITE_ENCRYPTED
-        ) {
             descriptor(
                 DESCRIPTOR_REPORT_REFERENCE,
                 BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED
