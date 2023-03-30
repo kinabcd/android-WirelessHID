@@ -6,7 +6,11 @@ import android.bluetooth.*
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -14,6 +18,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.annotation.RequiresPermission
+import androidx.core.content.ContextCompat
 import androidx.core.content.PermissionChecker.PERMISSION_GRANTED
 import androidx.core.content.PermissionChecker.checkSelfPermission
 import tw.lospot.kin.wirelesshid.bluetooth.gatt.GattService
@@ -197,16 +202,26 @@ class HidOverGattAdapter(
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     private fun sendReport(device: BluetoothDevice?, id: Int, data: ByteArray) {
-        device?.let {
-            val characteristic = gattServer?.getService(SERVICE_BLE_HID.uuid)
-                ?.getCharacteristic(CHARACTERISTIC_REPORT.uuid)
-            val bytes = byteArrayOf(id.toByte()) + data
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                gattServer?.notifyCharacteristicChanged(it, characteristic!!, false, bytes)
-            } else {
-                characteristic?.value = bytes
-                gattServer?.notifyCharacteristicChanged(it, characteristic!!, false)
-            }
+        val gattServer = gattServer ?: return
+        device ?: return
+        val characteristic =
+            gattServer.getService(SERVICE_BLE_HID.uuid)
+                ?.getCharacteristic(CHARACTERISTIC_REPORT.uuid) ?: return
+        val bytes = byteArrayOf(id.toByte()) + data
+        notifyCharacteristicChanged(gattServer, device, characteristic, false, bytes)
+    }
+
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    private fun notifyCharacteristicChanged(
+        gattServer: BluetoothGattServer,
+        device: BluetoothDevice,
+        characteristic: BluetoothGattCharacteristic, confirm: Boolean, bytes: ByteArray
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gattServer.notifyCharacteristicChanged(device, characteristic, confirm, bytes)
+        } else {
+            characteristic.value = bytes
+            gattServer.notifyCharacteristicChanged(device, characteristic, confirm)
         }
     }
 
@@ -316,6 +331,10 @@ class HidOverGattAdapter(
         )
         if (gattServer != null) {
             currentState = State.REGISTERING
+            ContextCompat.registerReceiver(
+                context, batteryObserver, IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )?.let { updateBatteryLevel(it) }
             addServices()
         } else {
             isRunning = false
@@ -342,13 +361,14 @@ class HidOverGattAdapter(
             Log.w(TAG, "unregisterApp(), Permission denied")
             return
         }
+        context.unregisterReceiver(batteryObserver)
         gattServer?.close()
         gattServer = null
         currentState = State.STOPPED
     }
 
     private fun connect() {
-        Log.v(TAG, "connect(), target=$targetDevice")
+        Log.v(TAG, "connect(), target=$targetDevice, bond=${targetDevice?.bondState}")
         if (!checkSelfPermission()) {
             Log.w(TAG, "connect(), Permission denied")
             return
@@ -526,7 +546,7 @@ class HidOverGattAdapter(
 
         override fun onNotificationSent(device: BluetoothDevice?, status: Int) {
             super.onNotificationSent(device, status)
-            Log.v(TAG, "onNotificationSent: $device, $status")
+            //Log.v(TAG, "onNotificationSent: $device, $status")
         }
 
         override fun onMtuChanged(device: BluetoothDevice?, mtu: Int) {
@@ -542,6 +562,29 @@ class HidOverGattAdapter(
         override fun onPhyRead(device: BluetoothDevice?, txPhy: Int, rxPhy: Int, status: Int) {
             super.onPhyRead(device, txPhy, rxPhy, status)
             Log.v(TAG, "onPhyRead: $device, $txPhy, $rxPhy, $status")
+        }
+    }
+
+    private val batteryObserver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent?) {
+            intent?.let { updateBatteryLevel(it) }
+        }
+    }
+
+    private fun updateBatteryLevel(intent: Intent) {
+        batteryLevel = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1).toByte()
+        if (!checkSelfPermission()) {
+            Log.w(TAG, "sendConsumerKey(), Permission denied")
+            return
+        }
+        val gattServer = gattServer ?: return
+        val characteristic = gattServer.getService(SERVICE_BATTERY.uuid)
+            ?.getCharacteristic(CHARACTERISTIC_BATTERY_LEVEL.uuid) ?: return
+        btManager.getConnectedDevices(BluetoothProfile.GATT_SERVER).forEach {
+            Log.v(TAG, "${it.address} - notify battery($batteryLevel)")
+            notifyCharacteristicChanged(
+                gattServer, it, characteristic, false, byteArrayOf(batteryLevel)
+            )
         }
     }
 
