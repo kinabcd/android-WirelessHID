@@ -26,10 +26,9 @@ class BtService : Service(), Handler.Callback {
     private val listeners = HashSet<Messenger>()
     private val notificationManager by lazy { NotificationManagerCompat.from(this) }
     private val btManager by lazy { getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager }
-    private val btAdapter by lazy { btManager.adapter }
     private val btSettings by lazy { BtSettings(context) }
     private val hidController: HidController by lazy {
-        HidDeviceAdapter(context, btAdapter) {
+        HidDeviceAdapter(context, btManager) {
             updateServiceState()
             notifyStatus()
         }

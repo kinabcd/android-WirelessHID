@@ -19,13 +19,14 @@ import kotlin.properties.Delegates
 
 class HidDeviceAdapter(
     private val context: Context,
-    private val btAdapter: BluetoothAdapter,
+    btManager: BluetoothManager,
     private val handler: Handler = Handler(Looper.getMainLooper()),
     private val onStateChanged: () -> Unit,
 ) : HidController, BluetoothHidDevice.Callback(), BluetoothProfile.ServiceListener {
     companion object {
         private const val TAG = "HidCallback"
     }
+    private val btAdapter = btManager.adapter
 
     override var isRunning = false
         set(value) {
